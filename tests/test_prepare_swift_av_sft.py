@@ -1,13 +1,19 @@
 import importlib.util
 import json
+import sys
 import unittest
 import uuid
 from pathlib import Path
 from unittest import mock
 
 
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+
 def load_prepare_module():
-    script_path = Path(__file__).resolve().parents[1] / "scripts" / "prepare_swift_av_sft.py"
+    script_path = SCRIPTS_DIR / "prepare_swift_av_sft.py"
     spec = importlib.util.spec_from_file_location("prepare_swift_av_sft", script_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -17,6 +23,19 @@ def load_prepare_module():
 class PrepareSwiftAvSftTests(unittest.TestCase):
     def setUp(self):
         self.prepare = load_prepare_module()
+
+    def test_dataset_builders_are_split_into_dataset_modules(self):
+        import prepare_fakeavceleb_swift_sft
+        import prepare_mavosdd_swift_sft
+
+        self.assertIs(
+            self.prepare.build_fakeavceleb_samples,
+            prepare_fakeavceleb_swift_sft.build_fakeavceleb_samples,
+        )
+        self.assertIs(
+            self.prepare.build_mavosdd_samples,
+            prepare_mavosdd_swift_sft.build_mavosdd_samples,
+        )
 
     def test_binary_record_matches_ms_swift_video_format(self):
         sample = {
