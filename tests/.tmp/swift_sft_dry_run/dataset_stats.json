@@ -1,0 +1,71 @@
+{
+  "invalid_file_count": 0,
+  "missing_file_count": 2,
+  "missing_or_invalid_by_reason": {
+    "missing_root": 2
+  },
+  "outputs": {
+    "fakeavceleb_binary_eval.jsonl": {
+      "label_distribution": {},
+      "modality_type_distribution": {},
+      "sample_count": 0
+    },
+    "fakeavceleb_binary_train.jsonl": {
+      "label_distribution": {},
+      "modality_type_distribution": {},
+      "sample_count": 0
+    },
+    "fakeavceleb_structured_eval.jsonl": {
+      "label_distribution": {},
+      "modality_type_distribution": {},
+      "sample_count": 0
+    },
+    "fakeavceleb_structured_train.jsonl": {
+      "label_distribution": {},
+      "modality_type_distribution": {},
+      "sample_count": 0
+    },
+    "mavosdd_binary_test_all.jsonl": {
+      "generative_method_distribution": {},
+      "label_distribution": {},
+      "language_distribution": {},
+      "sample_count": 0
+    },
+    "mavosdd_binary_test_indomain.jsonl": {
+      "generative_method_distribution": {},
+      "label_distribution": {},
+      "language_distribution": {},
+      "sample_count": 0
+    },
+    "mavosdd_binary_test_open_full.jsonl": {
+      "generative_method_distribution": {},
+      "label_distribution": {},
+      "language_distribution": {},
+      "sample_count": 0
+    },
+    "mavosdd_binary_test_open_language.jsonl": {
+      "generative_method_distribution": {},
+      "label_distribution": {},
+      "language_distribution": {},
+      "sample_count": 0
+    },
+    "mavosdd_binary_test_open_model.jsonl": {
+      "generative_method_distribution": {},
+      "label_distribution": {},
+      "language_distribution": {},
+      "sample_count": 0
+    },
+    "mavosdd_binary_train.jsonl": {
+      "generative_method_distribution": {},
+      "label_distribution": {},
+      "language_distribution": {},
+      "sample_count": 0
+    },
+    "mavosdd_binary_validation.jsonl": {
+      "generative_method_distribution": {},
+      "label_distribution": {},
+      "language_distribution": {},
+      "sample_count": 0
+    }
+  }
+}
