@@ -238,6 +238,37 @@ class PrepareSwiftAvSftTests(unittest.TestCase):
             )
         )
 
+    def test_build_fakeavceleb_samples_resolves_metadata_directory_columns(self):
+        scratch = Path(__file__).resolve().parent / ".tmp"
+        scratch.mkdir(exist_ok=True)
+        root = scratch / f"fakeavceleb_meta_dirs_{uuid.uuid4().hex}"
+        for dirname in self.prepare.FAKEAVCELEB_CATEGORIES:
+            (root / dirname).mkdir(parents=True)
+        video_dir = root / "RealVideo-RealAudio" / "African" / "men" / "id00076"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        valid_video = video_dir / "00109.mp4"
+        valid_video.write_bytes(b"video")
+        (root / "meta_data.csv").write_text(
+            "source,target1,target2,method,category,type,race,gender,path\n"
+            "id00076,-,-,real,A,RealVideo-RealAudio,African,men,00109.mp4\n",
+            encoding="utf-8",
+        )
+        missing_or_invalid = []
+
+        samples = self.prepare.build_fakeavceleb_samples(
+            root=root,
+            max_samples_per_class=None,
+            seed=42,
+            missing_or_invalid=missing_or_invalid,
+        )
+
+        self.assertEqual(len(samples), 1)
+        self.assertEqual(samples[0]["meta"]["source_metadata"]["source"], "id00076")
+        self.assertFalse(
+            any(item["reason"] == "missing_file" for item in missing_or_invalid),
+            missing_or_invalid,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

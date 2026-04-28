@@ -99,26 +99,15 @@ def read_fakeavceleb_metadata(root: Path) -> Tuple[Dict[str, Dict[str, Any]], Li
 
 
 def fakeavceleb_metadata_keys(row: Dict[str, Any], root: Path) -> Iterable[str]:
-    pathish_columns = [
-        key
-        for key in row
-        if any(token in key.lower() for token in ("path", "file", "video", "filename", "name"))
-    ]
-    for column in pathish_columns:
-        value = clean_text(row.get(column))
-        if not value:
-            continue
-        raw_path = Path(value)
-        yield value.replace("\\", "/")
-        yield raw_path.name
-        yield raw_path.stem
-        if raw_path.is_absolute():
-            yield abs_path(raw_path)
-        else:
-            yield (root / raw_path).resolve(strict=False).as_posix()
+    for candidate in fakeavceleb_metadata_path_candidates(row, root):
+        yield abs_path(candidate)
+        yield candidate.resolve(strict=False).as_posix()
+        yield safe_relative_path(candidate, root)
+        yield candidate.name
+        yield candidate.stem
 
 
-def fakeavceleb_expected_paths_from_metadata(row: Dict[str, Any], root: Path) -> Iterable[Path]:
+def fakeavceleb_metadata_path_candidates(row: Dict[str, Any], root: Path) -> Iterable[Path]:
     path_columns = [
         key
         for key in row
@@ -132,7 +121,34 @@ def fakeavceleb_expected_paths_from_metadata(row: Dict[str, Any], root: Path) ->
         if not has_path_shape:
             continue
         raw_path = Path(value)
-        yield raw_path if raw_path.is_absolute() else root / raw_path
+        if raw_path.is_absolute():
+            yield raw_path
+            continue
+        structured_path = fakeavceleb_structured_metadata_path(row, raw_path, root)
+        if structured_path is not None:
+            yield structured_path
+            continue
+        yield root / raw_path
+
+
+def fakeavceleb_structured_metadata_path(
+    row: Dict[str, Any], raw_path: Path, root: Path
+) -> Optional[Path]:
+    if raw_path.parent != Path("."):
+        return None
+    category = clean_text(row.get("type"))
+    race = clean_text(row.get("race"))
+    gender = clean_text(row.get("gender"))
+    source = clean_text(row.get("source"))
+    if not all([category, race, gender, source]):
+        return None
+    if category not in FAKEAVCELEB_CATEGORIES:
+        return None
+    return root / category / race / gender / source / raw_path
+
+
+def fakeavceleb_expected_paths_from_metadata(row: Dict[str, Any], root: Path) -> Iterable[Path]:
+    yield from fakeavceleb_metadata_path_candidates(row, root)
 
 
 def record_fakeavceleb_metadata_missing_files(

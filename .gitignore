@@ -2,6 +2,7 @@
 public/
 checkpoints/
 outputs/
+data/
 
 # B. 忽略项目下所有同名文件夹（任意层级）
 **/__pycache__/
