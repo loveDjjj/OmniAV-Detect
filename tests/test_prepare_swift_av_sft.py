@@ -24,18 +24,84 @@ class PrepareSwiftAvSftTests(unittest.TestCase):
     def setUp(self):
         self.prepare = load_prepare_module()
 
-    def test_dataset_builders_are_split_into_dataset_modules(self):
+    def test_dataset_modules_have_separate_entries(self):
         import prepare_fakeavceleb_swift_sft
         import prepare_mavosdd_swift_sft
 
-        self.assertIs(
-            self.prepare.build_fakeavceleb_samples,
-            prepare_fakeavceleb_swift_sft.build_fakeavceleb_samples,
+        self.assertTrue(callable(prepare_fakeavceleb_swift_sft.main))
+        self.assertTrue(callable(prepare_mavosdd_swift_sft.main))
+
+    def test_fakeavceleb_entry_writes_only_fakeavceleb_outputs(self):
+        import prepare_fakeavceleb_swift_sft
+
+        scratch = Path(__file__).resolve().parent / ".tmp"
+        scratch.mkdir(exist_ok=True)
+        root = scratch / f"fakeavceleb_entry_{uuid.uuid4().hex}"
+        output_dir = scratch / f"fakeavceleb_output_{uuid.uuid4().hex}"
+        for dirname in self.prepare.FAKEAVCELEB_CATEGORIES:
+            (root / dirname).mkdir(parents=True)
+        (root / "RealVideo-RealAudio" / "real.mp4").write_bytes(b"video")
+        (root / "FakeVideo-FakeAudio" / "fake.mp4").write_bytes(b"video")
+
+        exit_code = prepare_fakeavceleb_swift_sft.main(
+            [
+                "--fakeavceleb_root",
+                str(root),
+                "--output_dir",
+                str(output_dir),
+                "--mode",
+                "both",
+                "--num_preview",
+                "2",
+            ]
         )
-        self.assertIs(
-            self.prepare.build_mavosdd_samples,
-            prepare_mavosdd_swift_sft.build_mavosdd_samples,
-        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue((output_dir / "fakeavceleb_binary_train.jsonl").exists())
+        self.assertTrue((output_dir / "fakeavceleb_structured_train.jsonl").exists())
+        self.assertFalse((output_dir / "mavosdd_binary_train.jsonl").exists())
+        stats = json.loads((output_dir / "dataset_stats.json").read_text(encoding="utf-8"))
+        self.assertTrue(all(name.startswith("fakeavceleb") for name in stats["outputs"]))
+
+    def test_mavosdd_entry_writes_only_mavosdd_outputs(self):
+        import prepare_mavosdd_swift_sft
+
+        scratch = Path(__file__).resolve().parent / ".tmp"
+        scratch.mkdir(exist_ok=True)
+        root = scratch / f"mavosdd_entry_{uuid.uuid4().hex}"
+        output_dir = scratch / f"mavosdd_output_{uuid.uuid4().hex}"
+        (root / "english").mkdir(parents=True)
+        video_path = root / "english" / "real.mp4"
+        video_path.write_bytes(b"video")
+        rows = [
+            {
+                "video_path": "english/real.mp4",
+                "label": "real",
+                "split": "train",
+                "language": "english",
+                "generative_method": "",
+                "open_set_model": False,
+                "open_set_language": False,
+            }
+        ]
+
+        with mock.patch.object(prepare_mavosdd_swift_sft, "load_mavos_dataset", return_value=rows):
+            exit_code = prepare_mavosdd_swift_sft.main(
+                [
+                    "--mavos_root",
+                    str(root),
+                    "--output_dir",
+                    str(output_dir),
+                    "--num_preview",
+                    "2",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue((output_dir / "mavosdd_binary_train.jsonl").exists())
+        self.assertFalse((output_dir / "fakeavceleb_binary_train.jsonl").exists())
+        stats = json.loads((output_dir / "dataset_stats.json").read_text(encoding="utf-8"))
+        self.assertTrue(all(name.startswith("mavosdd") for name in stats["outputs"]))
 
     def test_binary_record_matches_ms_swift_video_format(self):
         sample = {

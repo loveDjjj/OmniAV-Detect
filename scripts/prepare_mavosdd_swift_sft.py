@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
+import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from prepare_swift_av_sft_common import (
     Issue,
@@ -14,8 +16,13 @@ from prepare_swift_av_sft_common import (
     clean_text,
     limit_samples_per_class,
     make_sample,
+    make_binary_record,
     normalize_bool,
     record_issue,
+    scan_video_files,
+    setup_logging,
+    write_output_jsonl,
+    write_stats,
 )
 
 
@@ -202,3 +209,61 @@ def mavos_output_memberships(split: str, row: Dict[str, Any]) -> List[str]:
     else:
         memberships.append("test_open_full")
     return memberships
+
+
+def build_mavosdd_output_records(split_samples: Dict[str, List[Sample]]) -> Dict[str, List[Dict[str, Any]]]:
+    outputs: Dict[str, List[Dict[str, Any]]] = {}
+    for split_name in MAVOS_OUTPUT_SPLITS:
+        outputs[f"mavosdd_binary_{split_name}.jsonl"] = [
+            make_binary_record(sample) for sample in split_samples[split_name]
+        ]
+    return outputs
+
+
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Convert local MAVOS-DD videos to ms-swift/Qwen2.5-Omni binary SFT jsonl."
+    )
+    parser.add_argument("--mavos_root", default="/data/OneDay/MAVOS-DD")
+    parser.add_argument("--output_dir", default="/data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--max_samples_per_class", type=int, default=None)
+    parser.add_argument("--dry_run", action="store_true")
+    parser.add_argument("--num_preview", type=int, default=10)
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    setup_logging()
+    args = parse_args(argv)
+    root = Path(args.mavos_root).expanduser()
+    output_dir = Path(args.output_dir).expanduser()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.max_samples_per_class is not None and args.max_samples_per_class < 1:
+        logging.error("--max_samples_per_class must be positive when provided")
+        return 2
+
+    logging.info("Preparing MAVOS-DD binary SFT data, dry_run=%s", args.dry_run)
+    logging.info("MAVOS-DD root: %s", root)
+    logging.info("Output dir: %s", output_dir)
+
+    issues: List[Issue] = []
+    scan_summary = {"MAVOS-DD": scan_video_files(root)}
+    split_samples = build_mavosdd_samples(
+        root=root,
+        max_samples_per_class=args.max_samples_per_class,
+        seed=args.seed,
+        missing_or_invalid=issues,
+    )
+    outputs = build_mavosdd_output_records(split_samples)
+
+    write_output_jsonl(output_dir, outputs, args.dry_run)
+    write_stats(output_dir, scan_summary, outputs, issues, args.num_preview, args.seed)
+
+    logging.info("Prepared %d MAVOS-DD output jsonl definitions.", len(outputs))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

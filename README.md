@@ -2,28 +2,45 @@
 
 ## 为 Qwen2.5-Omni SFT 准备 FakeAVCeleb 和 MAVOS-DD
 
-使用 `scripts/prepare_swift_av_sft.py` 可以把本地 FakeAVCeleb 和 MAVOS-DD 视频文件转换成 ms-swift/Qwen2.5-Omni SFT 可直接使用的 JSONL 数据。脚本会扫描磁盘上的真实文件，写入视频绝对路径，跳过缺失、大小为 0 或扩展名不受支持的视频，并把跳过的样本记录到 `missing_or_invalid_files.csv`。
+本项目为每个数据集提供单独的数据准备入口，不再使用一个脚本同时处理 FakeAVCeleb 和 MAVOS-DD。脚本会扫描磁盘上的真实文件，写入视频绝对路径，跳过缺失、大小为 0 或扩展名不受支持的视频，并把跳过的样本记录到 `missing_or_invalid_files.csv`。
 
-最小 dry-run 检查命令：
+FakeAVCeleb 最小 dry-run 检查命令：
 
 ```bash
-python scripts/prepare_swift_av_sft.py --dry_run --num_preview 5
+python scripts/prepare_fakeavceleb_swift_sft.py --dry_run --num_preview 5
 ```
 
-同时生成 binary SFT 和 FakeAVCeleb structured SFT 的正式运行命令：
+MAVOS-DD 最小 dry-run 检查命令：
 
 ```bash
-python scripts/prepare_swift_av_sft.py \
+python scripts/prepare_mavosdd_swift_sft.py --dry_run --num_preview 5
+```
+
+FakeAVCeleb 正式运行命令，可同时生成 binary SFT 和 structured SFT：
+
+```bash
+python scripts/prepare_fakeavceleb_swift_sft.py \
   --fakeavceleb_root /data/OneDay/FakeAVCeleb \
-  --mavos_root /data/OneDay/MAVOS-DD \
-  --output_dir /data/OneDay/OmniAV-Detect/data/swift_sft \
+  --output_dir /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb \
   --mode both
 ```
 
-`data/swift_sft/` 下的主要输出文件：
+MAVOS-DD 正式运行命令，仅生成 binary SFT：
+
+```bash
+python scripts/prepare_mavosdd_swift_sft.py \
+  --mavos_root /data/OneDay/MAVOS-DD \
+  --output_dir /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd
+```
+
+FakeAVCeleb 输出目录下的主要文件：
 
 - `fakeavceleb_binary_train.jsonl`, `fakeavceleb_binary_eval.jsonl`
 - 当使用 `--mode structured` 或 `--mode both` 时生成 `fakeavceleb_structured_train.jsonl`, `fakeavceleb_structured_eval.jsonl`
+- `dataset_scan_summary.json`, `dataset_stats.json`, `missing_or_invalid_files.csv`, `preview_samples.json`
+
+MAVOS-DD 输出目录下的主要文件：
+
 - `mavosdd_binary_train.jsonl`, `mavosdd_binary_validation.jsonl`
 - `mavosdd_binary_test_indomain.jsonl`, `mavosdd_binary_test_open_model.jsonl`
 - `mavosdd_binary_test_open_language.jsonl`, `mavosdd_binary_test_open_full.jsonl`
@@ -45,8 +62,8 @@ Binary SFT 示例命令：
 CUDA_VISIBLE_DEVICES=0 swift sft \
   --model Qwen/Qwen2.5-Omni-7B \
   --train_type lora \
-  --dataset /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_binary_train.jsonl \
-  --val_dataset /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_binary_eval.jsonl \
+  --dataset /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_train.jsonl \
+  --val_dataset /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_eval.jsonl \
   --torch_dtype bfloat16 \
   --num_train_epochs 3 \
   --per_device_train_batch_size 1 \
@@ -58,4 +75,4 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
   --output_dir /data/OneDay/OmniAV-Detect/outputs/qwen2_5_omni_fakeavceleb_binary
 ```
 
-如果要训练 MAVOS-DD，把 `--dataset` 和 `--val_dataset` 分别替换为 `mavosdd_binary_train.jsonl` 和 `mavosdd_binary_validation.jsonl`。SFT 结束后，可以使用 MAVOS-DD 的 test JSONL 文件做独立测试集评估。
+如果要训练 MAVOS-DD，把 `--dataset` 和 `--val_dataset` 分别替换为 `/data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_train.jsonl` 和 `/data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_validation.jsonl`。SFT 结束后，可以使用 MAVOS-DD 的 test JSONL 文件做独立测试集评估。

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import logging
 import random
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -19,9 +21,15 @@ from prepare_swift_av_sft_common import (
     iter_files,
     limit_samples_per_class,
     make_sample,
+    make_binary_record,
+    make_structured_record,
     normalize_json_value,
     record_issue,
     safe_relative_path,
+    scan_video_files,
+    setup_logging,
+    write_output_jsonl,
+    write_stats,
 )
 
 
@@ -295,3 +303,76 @@ def stratified_split(
     train.sort(key=lambda item: item.get("video_path", ""))
     eval_samples.sort(key=lambda item: item.get("video_path", ""))
     return train, eval_samples
+
+
+def build_fakeavceleb_output_records(samples: List[Sample], args: argparse.Namespace) -> Dict[str, List[Dict[str, Any]]]:
+    outputs: Dict[str, List[Dict[str, Any]]] = {}
+    train_samples, eval_samples = stratified_split(samples, args.fakeavceleb_train_ratio, args.seed)
+
+    if args.mode in {"binary", "both"}:
+        outputs["fakeavceleb_binary_train.jsonl"] = [make_binary_record(sample) for sample in train_samples]
+        outputs["fakeavceleb_binary_eval.jsonl"] = [make_binary_record(sample) for sample in eval_samples]
+
+    if args.mode in {"structured", "both"}:
+        outputs["fakeavceleb_structured_train.jsonl"] = [
+            make_structured_record(sample) for sample in train_samples
+        ]
+        outputs["fakeavceleb_structured_eval.jsonl"] = [
+            make_structured_record(sample) for sample in eval_samples
+        ]
+
+    return outputs
+
+
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Convert local FakeAVCeleb videos to ms-swift/Qwen2.5-Omni SFT jsonl."
+    )
+    parser.add_argument("--fakeavceleb_root", default="/data/OneDay/FakeAVCeleb")
+    parser.add_argument("--output_dir", default="/data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--fakeavceleb_train_ratio", type=float, default=0.7)
+    parser.add_argument("--mode", choices=["binary", "structured", "both"], default="binary")
+    parser.add_argument("--max_samples_per_class", type=int, default=None)
+    parser.add_argument("--dry_run", action="store_true")
+    parser.add_argument("--num_preview", type=int, default=10)
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    setup_logging()
+    args = parse_args(argv)
+    root = Path(args.fakeavceleb_root).expanduser()
+    output_dir = Path(args.output_dir).expanduser()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not 0 < args.fakeavceleb_train_ratio < 1:
+        logging.error("--fakeavceleb_train_ratio must be between 0 and 1")
+        return 2
+    if args.max_samples_per_class is not None and args.max_samples_per_class < 1:
+        logging.error("--max_samples_per_class must be positive when provided")
+        return 2
+
+    logging.info("Preparing FakeAVCeleb with mode=%s, dry_run=%s", args.mode, args.dry_run)
+    logging.info("FakeAVCeleb root: %s", root)
+    logging.info("Output dir: %s", output_dir)
+
+    issues: List[Issue] = []
+    scan_summary = {"FakeAVCeleb": scan_video_files(root)}
+    samples = build_fakeavceleb_samples(
+        root=root,
+        max_samples_per_class=args.max_samples_per_class,
+        seed=args.seed,
+        missing_or_invalid=issues,
+    )
+    outputs = build_fakeavceleb_output_records(samples, args)
+
+    write_output_jsonl(output_dir, outputs, args.dry_run)
+    write_stats(output_dir, scan_summary, outputs, issues, args.num_preview, args.seed)
+
+    logging.info("Prepared %d FakeAVCeleb output jsonl definitions.", len(outputs))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
