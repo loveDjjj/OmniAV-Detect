@@ -1,3 +1,0 @@
-dataset,split,reason,expected_path,metadata_json
-FakeAVCeleb,scan,missing_root,tests\.tmp\nonexistent_fake,{}
-MAVOS-DD,scan,missing_root,tests\.tmp\nonexistent_mavos,{}
