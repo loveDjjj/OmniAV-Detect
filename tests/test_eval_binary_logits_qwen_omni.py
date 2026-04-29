@@ -2,6 +2,7 @@ import importlib.util
 import json
 import math
 import sys
+import types
 import unittest
 import uuid
 from pathlib import Path
@@ -88,6 +89,46 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
         wrapped.base_model = base
 
         self.assertIs(self.eval_module.resolve_forward_model(wrapped), thinker)
+
+    def test_prepare_inputs_prefers_qwen_omni_utils_decoder_path(self):
+        calls = []
+
+        class FakeProcessor:
+            def apply_chat_template(self, conversations, **kwargs):
+                calls.append(("apply_chat_template", kwargs))
+                if kwargs.get("tokenize"):
+                    raise AssertionError("prepare_inputs should not use the transformers torchvision video path first")
+                return "chat text"
+
+            def __call__(self, **kwargs):
+                calls.append(("processor_call", kwargs))
+                return {"input_ids": "ids"}
+
+        def fake_process_mm_info(conversations, use_audio_in_video):
+            calls.append(("process_mm_info", {"use_audio_in_video": use_audio_in_video}))
+            return ["audio"], [], ["video"]
+
+        fake_module = types.SimpleNamespace(process_mm_info=fake_process_mm_info)
+        old_module = sys.modules.get("qwen_omni_utils")
+        sys.modules["qwen_omni_utils"] = fake_module
+        try:
+            inputs = self.eval_module.prepare_inputs(
+                FakeProcessor(),
+                self.eval_module.build_conversation("/tmp/a.mp4"),
+                device=None,
+                use_audio_in_video=True,
+                fps=1.0,
+            )
+        finally:
+            if old_module is None:
+                sys.modules.pop("qwen_omni_utils", None)
+            else:
+                sys.modules["qwen_omni_utils"] = old_module
+
+        self.assertEqual(inputs, {"input_ids": "ids"})
+        self.assertEqual(calls[0][0], "apply_chat_template")
+        self.assertFalse(calls[0][1]["tokenize"])
+        self.assertEqual(calls[1], ("process_mm_info", {"use_audio_in_video": True}))
 
     def test_load_jsonl_samples_reads_ms_swift_records_and_respects_max_samples(self):
         scratch = Path(__file__).resolve().parent / ".tmp"

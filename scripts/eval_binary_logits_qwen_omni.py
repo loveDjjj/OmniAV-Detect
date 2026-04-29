@@ -255,25 +255,26 @@ def prepare_inputs(
     fps: float,
 ) -> Any:
     try:
-        inputs = processor.apply_chat_template(
-            conversations,
-            load_audio_from_video=use_audio_in_video,
-            add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt",
-            fps=fps,
-            padding=True,
-            use_audio_in_video=use_audio_in_video,
-        )
-        return move_inputs_to_device(inputs, device)
-    except (TypeError, ValueError):
-        pass
-
-    try:
         from qwen_omni_utils import process_mm_info
     except ImportError as exc:
-        raise RuntimeError("Missing qwen_omni_utils. Please install it before running Omni video evaluation.") from exc
+        try:
+            inputs = processor.apply_chat_template(
+                conversations,
+                load_audio_from_video=use_audio_in_video,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+                fps=fps,
+                padding=True,
+                use_audio_in_video=use_audio_in_video,
+            )
+            return move_inputs_to_device(inputs, device)
+        except Exception as fallback_exc:  # noqa: BLE001 - preserve actionable dependency hint.
+            raise RuntimeError(
+                "qwen_omni_utils is unavailable and the Transformers built-in video decoder failed. "
+                "Install qwen_omni_utils/decord or fix the torchvision video backend."
+            ) from fallback_exc
 
     text = processor.apply_chat_template(conversations, add_generation_prompt=True, tokenize=False)
     audios, images, videos = process_mm_info(conversations, use_audio_in_video=use_audio_in_video)
