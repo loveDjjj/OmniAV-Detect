@@ -34,6 +34,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--real_token_id", type=int, default=12768)
     parser.add_argument("--device_map", default="auto")
     parser.add_argument("--torch_dtype", default="bfloat16")
+    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--fps", type=float, default=1.0, help="Video sampling fps passed to the Qwen2.5-Omni processor.")
     parser.add_argument(
         "--use_audio_in_video",
         dest="use_audio_in_video",
@@ -122,6 +124,13 @@ def load_jsonl_samples(jsonl_path: Path | str, max_samples: Optional[int] = None
     return samples
 
 
+def batch_samples(samples: Sequence[Dict[str, Any]], batch_size: int) -> Iterable[List[Dict[str, Any]]]:
+    if batch_size < 1:
+        raise ValueError(f"batch_size must be >= 1, got {batch_size}")
+    for start in range(0, len(samples), batch_size):
+        yield list(samples[start : start + batch_size])
+
+
 def normalize_label(value: Any) -> str:
     if value is None:
         return ""
@@ -191,6 +200,30 @@ def load_model_and_processor(args: argparse.Namespace) -> Tuple[Any, Any]:
     return model, processor
 
 
+def resolve_forward_model(model: Any) -> Any:
+    """Return the module that owns Qwen2.5-Omni text logits forward.
+
+    PeftModel.forward wraps the full Qwen2_5OmniForConditionalGeneration module. That full
+    wrapper is a Thinker/Talker/Token2Wav composition, while the text logits forward lives in
+    the Thinker. Calling the PEFT top-level forward can therefore fall through to
+    torch.nn.Module._forward_unimplemented().
+    """
+    candidate_paths = [
+        ("base_model", "model", "thinker"),
+        ("model", "thinker"),
+        ("thinker",),
+    ]
+    for path in candidate_paths:
+        current = model
+        for attr in path:
+            current = getattr(current, attr, None)
+            if current is None:
+                break
+        if current is not None:
+            return current
+    return model
+
+
 def infer_input_device(model: Any) -> Any:
     model_device = getattr(model, "device", None)
     if model_device is not None:
@@ -214,14 +247,36 @@ def move_inputs_to_device(inputs: Any, device: Any) -> Any:
     return inputs
 
 
-def prepare_inputs(processor: Any, conversation: List[Dict[str, Any]], device: Any, use_audio_in_video: bool) -> Any:
+def prepare_inputs(
+    processor: Any,
+    conversations: List[Dict[str, Any]] | List[List[Dict[str, Any]]],
+    device: Any,
+    use_audio_in_video: bool,
+    fps: float,
+) -> Any:
+    try:
+        inputs = processor.apply_chat_template(
+            conversations,
+            load_audio_from_video=use_audio_in_video,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+            fps=fps,
+            padding=True,
+            use_audio_in_video=use_audio_in_video,
+        )
+        return move_inputs_to_device(inputs, device)
+    except (TypeError, ValueError):
+        pass
+
     try:
         from qwen_omni_utils import process_mm_info
     except ImportError as exc:
         raise RuntimeError("Missing qwen_omni_utils. Please install it before running Omni video evaluation.") from exc
 
-    text = processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
-    audios, images, videos = process_mm_info(conversation, use_audio_in_video=use_audio_in_video)
+    text = processor.apply_chat_template(conversations, add_generation_prompt=True, tokenize=False)
+    audios, images, videos = process_mm_info(conversations, use_audio_in_video=use_audio_in_video)
     common_kwargs = {
         "text": text,
         "images": images,
@@ -237,7 +292,7 @@ def prepare_inputs(processor: Any, conversation: List[Dict[str, Any]], device: A
     return move_inputs_to_device(inputs, device)
 
 
-def get_last_token_logits(outputs: Any, inputs: Any) -> Any:
+def get_last_token_logits_batch(outputs: Any, inputs: Any) -> Any:
     logits = outputs.logits
     attention_mask = None
     if isinstance(inputs, dict):
@@ -246,9 +301,14 @@ def get_last_token_logits(outputs: Any, inputs: Any) -> Any:
         attention_mask = inputs.get("attention_mask")
 
     if attention_mask is not None:
-        last_index = int(attention_mask[0].sum().item()) - 1
-        return logits[0, last_index, :]
-    return logits[0, -1, :]
+        last_indices = attention_mask.sum(dim=1).to(logits.device).long() - 1
+        batch_indices = last_indices.new_tensor(range(logits.shape[0]))
+        return logits[batch_indices, last_indices, :]
+    return logits[:, -1, :]
+
+
+def get_last_token_logits(outputs: Any, inputs: Any) -> Any:
+    return get_last_token_logits_batch(outputs, inputs)[0]
 
 
 def extract_binary_probs(logits: Any, real_token_id: int, fake_token_id: int) -> Dict[str, float | str]:
@@ -262,34 +322,59 @@ def extract_binary_probs(logits: Any, real_token_id: int, fake_token_id: int) ->
     return pair_softmax(real_logit=real_logit, fake_logit=fake_logit)
 
 
-def evaluate_sample(model: Any, processor: Any, sample: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
+def extract_binary_probs_batch(logits: Any, real_token_id: int, fake_token_id: int) -> List[Dict[str, float | str]]:
+    if len(logits.shape) == 1:
+        logits = logits.unsqueeze(0)
+    return [
+        extract_binary_probs(row_logits, real_token_id=real_token_id, fake_token_id=fake_token_id)
+        for row_logits in logits
+    ]
+
+
+def evaluate_batch(
+    model: Any,
+    processor: Any,
+    samples: Sequence[Dict[str, Any]],
+    args: argparse.Namespace,
+) -> List[Dict[str, Any]]:
     try:
         import torch
     except ImportError as exc:
         raise RuntimeError("Missing torch in evaluation environment.") from exc
 
-    conversation = build_conversation(sample["video_path"])
-    device = infer_input_device(model)
-    inputs = prepare_inputs(processor, conversation, device, args.use_audio_in_video)
+    forward_model = resolve_forward_model(model)
+    conversations = [build_conversation(sample["video_path"]) for sample in samples]
+    processor_input = conversations[0] if len(conversations) == 1 else conversations
+    device = infer_input_device(forward_model)
+    inputs = prepare_inputs(processor, processor_input, device, args.use_audio_in_video, args.fps)
     with torch.inference_mode():
         try:
-            outputs = model(**inputs, use_audio_in_video=args.use_audio_in_video)
+            outputs = forward_model(**inputs, use_audio_in_video=args.use_audio_in_video)
         except TypeError:
-            outputs = model(**inputs)
-    logits = get_last_token_logits(outputs, inputs)
-    scores = extract_binary_probs(logits, real_token_id=args.real_token_id, fake_token_id=args.fake_token_id)
-    return {
-        "index": sample["index"],
-        "line_number": sample["line_number"],
-        "video_path": sample["video_path"],
-        "label": sample["label"],
-        "pred": scores["pred"],
-        "p_real": scores["p_real"],
-        "p_fake": scores["p_fake"],
-        "real_logit": scores["real_logit"],
-        "fake_logit": scores["fake_logit"],
-        "meta": sample.get("meta", {}),
-    }
+            outputs = forward_model(**inputs)
+    logits = get_last_token_logits_batch(outputs, inputs)
+    score_rows = extract_binary_probs_batch(logits, real_token_id=args.real_token_id, fake_token_id=args.fake_token_id)
+    records = []
+    for sample, scores in zip(samples, score_rows):
+        records.append(
+            {
+                "index": sample["index"],
+                "line_number": sample["line_number"],
+                "video_path": sample["video_path"],
+                "label": sample["label"],
+                "pred": scores["pred"],
+                "p_real": scores["p_real"],
+                "p_fake": scores["p_fake"],
+                "real_logit": scores["real_logit"],
+                "fake_logit": scores["fake_logit"],
+                "meta": sample.get("meta", {}),
+            }
+        )
+    return records
+
+
+def evaluate_sample(model: Any, processor: Any, sample: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
+    return evaluate_batch(model, processor, [sample], args)[0]
 
 
 def manual_confusion_matrix(labels: Sequence[str], predictions: Sequence[str]) -> List[List[int]]:
@@ -513,6 +598,8 @@ def build_run_config(args: argparse.Namespace, num_samples: int) -> Dict[str, An
         "real_token_id": args.real_token_id,
         "device_map": args.device_map,
         "torch_dtype": args.torch_dtype,
+        "batch_size": args.batch_size,
+        "fps": args.fps,
         "use_audio_in_video": args.use_audio_in_video,
         "max_new_tokens": args.max_new_tokens,
         "save_every": args.save_every,
@@ -546,27 +633,43 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     logging.info("Loaded %d samples from %s", len(samples), args.jsonl)
     logging.info("Output dir: %s", output_dir)
     logging.info("Fake token id=%d, Real token id=%d", args.fake_token_id, args.real_token_id)
+    logging.info("Batch size=%d, use_audio_in_video=%s, fps=%s", args.batch_size, args.use_audio_in_video, args.fps)
 
     model, processor = load_model_and_processor(args)
     predictions: List[Dict[str, Any]] = []
     bad_samples: List[Dict[str, Any]] = []
+    processed = 0
+    next_save = args.save_every if args.save_every > 0 else None
 
-    for position, sample in enumerate(samples, start=1):
+    for batch in batch_samples(samples, args.batch_size):
         try:
-            predictions.append(evaluate_sample(model, processor, sample, args))
-        except Exception as exc:  # noqa: BLE001 - continue evaluation after per-sample failures.
-            bad_samples.append(make_bad_sample(sample, exc))
-            logging.exception("Failed sample %s (%s)", sample.get("index"), sample.get("video_path"))
+            predictions.extend(evaluate_batch(model, processor, batch, args))
+        except Exception as batch_exc:  # noqa: BLE001 - retry per sample to isolate broken media.
+            if len(batch) > 1:
+                logging.warning(
+                    "Batch starting at sample %s failed with %s; retrying sample by sample.",
+                    batch[0].get("index"),
+                    batch_exc,
+                )
+            for sample in batch:
+                try:
+                    predictions.append(evaluate_sample(model, processor, sample, args))
+                except Exception as exc:  # noqa: BLE001 - continue evaluation after per-sample failures.
+                    bad_samples.append(make_bad_sample(sample, exc))
+                    logging.exception("Failed sample %s (%s)", sample.get("index"), sample.get("video_path"))
 
-        if args.save_every > 0 and position % args.save_every == 0:
+        processed += len(batch)
+        if next_save is not None and processed >= next_save:
             save_outputs(output_dir, predictions, bad_samples, run_config)
             logging.info(
                 "Saved checkpoint after %d/%d samples: %d predictions, %d bad samples",
-                position,
+                processed,
                 len(samples),
                 len(predictions),
                 len(bad_samples),
             )
+            while next_save is not None and next_save <= processed:
+                next_save += args.save_every
 
     metrics = save_outputs(output_dir, predictions, bad_samples, run_config)
     logging.info("Wrote predictions.jsonl, bad_samples.jsonl, and metrics.json to %s", output_dir)

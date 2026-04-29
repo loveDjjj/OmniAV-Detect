@@ -46,6 +46,49 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
         self.assertGreater(result["p_fake"], result["p_real"])
         self.assertTrue(math.isclose(result["p_fake"] + result["p_real"], 1.0, rel_tol=1e-9))
 
+    def test_parse_args_defaults_to_single_sample_batches(self):
+        args = self.eval_module.parse_args(
+            [
+                "--adapter_path",
+                "adapter",
+                "--jsonl",
+                "eval.jsonl",
+                "--output_dir",
+                "out",
+            ]
+        )
+
+        self.assertEqual(args.batch_size, 1)
+        self.assertTrue(args.use_audio_in_video)
+
+    def test_batch_samples_groups_samples_without_dropping_tail(self):
+        samples = [{"index": idx} for idx in range(5)]
+
+        batches = list(self.eval_module.batch_samples(samples, batch_size=2))
+
+        self.assertEqual([[item["index"] for item in batch] for batch in batches], [[0, 1], [2, 3], [4]])
+
+    def test_resolve_forward_model_prefers_peft_wrapped_thinker(self):
+        thinker = object()
+
+        class InnerModel:
+            pass
+
+        class BaseModel:
+            pass
+
+        class WrappedModel:
+            pass
+
+        inner = InnerModel()
+        inner.thinker = thinker
+        base = BaseModel()
+        base.model = inner
+        wrapped = WrappedModel()
+        wrapped.base_model = base
+
+        self.assertIs(self.eval_module.resolve_forward_model(wrapped), thinker)
+
     def test_load_jsonl_samples_reads_ms_swift_records_and_respects_max_samples(self):
         scratch = Path(__file__).resolve().parent / ".tmp"
         scratch.mkdir(exist_ok=True)
