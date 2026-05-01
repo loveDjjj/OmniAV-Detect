@@ -47,6 +47,7 @@ class EvalBinaryLogitsQwenOmniVllmTests(unittest.TestCase):
         self.assertTrue(args.use_audio_in_video)
         self.assertEqual(args.mm_format, "video")
         self.assertEqual(args.temperature, 0.0)
+        self.assertEqual(args.logprobs, -1)
 
     def test_build_multi_modal_data_variants(self):
         conversation = self.eval_module.build_conversation("/tmp/a.mp4")

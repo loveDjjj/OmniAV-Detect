@@ -129,7 +129,8 @@ CUDA_VISIBLE_DEVICES=0,1 python scripts/eval_binary_logits_qwen_omni_vllm.py \
   --output_dir /data/OneDay/OmniAV-Detect/outputs/eval_debug/fakeavceleb_stage1_50_vllm \
   --batch_size 1 \
   --max_samples 50 \
-  --mm_format video
+  --mm_format video \
+  --logprobs -1
 ```
 
 输入：
@@ -150,6 +151,7 @@ CUDA_VISIBLE_DEVICES=0,1 python scripts/eval_binary_logits_qwen_omni_vllm.py \
 备注：
 
 - 需要安装 vLLM 与 `qwen-vl-utils`；默认 `mm_format=video` 会调用 `process_vision_info` 构造 vLLM 所需的视频输入。
+- `--logprobs -1` 会返回完整词表 logprobs，确保能取到 Real/Fake token 概率。
 
 ### 批量评估 dry-run
 

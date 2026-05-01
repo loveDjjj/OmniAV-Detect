@@ -223,6 +223,7 @@ def build_sampling_params(args: argparse.Namespace) -> Any:
         temperature=args.temperature,
         top_p=args.top_p,
         max_tokens=args.max_new_tokens,
+        logprobs=args.logprobs,
         logprob_token_ids=[args.real_token_id, args.fake_token_id],
         prompt_logprobs=0,
     )
@@ -273,7 +274,10 @@ def extract_binary_probs_from_output(output: Any, real_token_id: int, fake_token
     # 关键逻辑：兼容不同 vLLM 版本的 logprob 字段结构。
     logprob_map = _extract_logprob_map(generation)
     if not isinstance(logprob_map, dict):
-        raise ValueError("vLLM output does not include logprob_token_ids/logprobs data")
+        raise ValueError(
+            "vLLM output does not include logprob_token_ids/logprobs data. "
+            "Set --logprobs to a non-zero value (e.g., -1) to enable logprob outputs."
+        )
 
     if real_token_id not in logprob_map or fake_token_id not in logprob_map:
         raise ValueError("vLLM output is missing requested token logprobs")

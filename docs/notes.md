@@ -2,11 +2,10 @@
 
 ## 需求
 
-修复 vLLM 后端的多模态视频输入构造，避免把视频路径字符串直接传给 vLLM。
+修复 vLLM 后端未返回 logprobs 导致无法读取 Real/Fake 概率的问题。
 
 ## 修改文件
 
-- requirements.txt
 - docs/notes.md
 - docs/commands.md
 - docs/logs/2026-05.md
@@ -16,9 +15,9 @@
 
 ## 修改内容
 
-- vLLM 后端使用 `qwen-vl-utils.process_vision_info` 生成视频输入，避免传入字符串路径。
-- `mm_format` 增加 `qwen_vl/qwen_vl_utils/video_path` 等选项，并默认使用 vLLM 兼容的视频输入。
-- 增加 `qwen-vl-utils` 依赖说明与相关测试覆盖。
+- vLLM 评估强制请求 logprobs，并新增 `--logprobs` 参数（默认 -1）。
+- logprobs 缺失时提示用户设置 `--logprobs` 以返回 Real/Fake token 概率。
+- 更新命令与测试覆盖 logprobs 默认值。
 
 ## 验证
 

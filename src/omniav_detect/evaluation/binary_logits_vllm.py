@@ -117,6 +117,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top_p", type=float, default=1.0)
+    parser.add_argument(
+        "--logprobs",
+        type=int,
+        default=-1,
+        help="Number of top logprobs to return; use -1 for full vocab (recommended for Real/Fake scoring).",
+    )
     return parser.parse_args(argv)
 
 
