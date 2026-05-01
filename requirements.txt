@@ -20,6 +20,9 @@ scikit-learn
 # vLLM backend (optional)
 vllm
 
+# vLLM Qwen2-VL video preprocessing
+qwen-vl-utils
+
 # Notes
 # 版本号待确认；当前文件只列出仓库代码和命令中能确认需要的依赖。
 # 服务器上的 torch / transformers / peft / ms-swift 版本应以实际训练环境为准。

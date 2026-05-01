@@ -9,6 +9,7 @@
 
 import importlib.util
 import sys
+import types
 import unittest
 from pathlib import Path
 
@@ -48,16 +49,34 @@ class EvalBinaryLogitsQwenOmniVllmTests(unittest.TestCase):
         self.assertEqual(args.temperature, 0.0)
 
     def test_build_multi_modal_data_variants(self):
-        video_path = "/tmp/a.mp4"
+        conversation = self.eval_module.build_conversation("/tmp/a.mp4")
 
-        self.assertEqual(self.eval_module.build_multi_modal_data(video_path, True, "video"), {"video": video_path})
+        def fake_process_vision_info(messages):
+            return ["image_inputs"], ["video_inputs"]
+
+        fake_module = types.SimpleNamespace(process_vision_info=fake_process_vision_info)
+        old_module = sys.modules.get("qwen_vl_utils")
+        sys.modules["qwen_vl_utils"] = fake_module
+        try:
+            mm_data = self.eval_module.build_multi_modal_data(conversation, True, "video")
+        finally:
+            if old_module is None:
+                sys.modules.pop("qwen_vl_utils", None)
+            else:
+                sys.modules["qwen_vl_utils"] = old_module
+
+        self.assertEqual(mm_data, {"image": ["image_inputs"], "video": ["video_inputs"]})
         self.assertEqual(
-            self.eval_module.build_multi_modal_data(video_path, True, "videos_list"),
-            {"videos": [video_path]},
+            self.eval_module.build_multi_modal_data(conversation, True, "video_path"),
+            {"video": "/tmp/a.mp4"},
         )
         self.assertEqual(
-            self.eval_module.build_multi_modal_data(video_path, False, "video_audio"),
-            {"video": video_path},
+            self.eval_module.build_multi_modal_data(conversation, True, "videos_list"),
+            {"videos": ["/tmp/a.mp4"]},
+        )
+        self.assertEqual(
+            self.eval_module.build_multi_modal_data(conversation, False, "video_audio"),
+            {"video": "/tmp/a.mp4"},
         )
 
     def test_build_prompt_text_fallbacks_without_tokenizer(self):

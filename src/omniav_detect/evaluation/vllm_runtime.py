@@ -20,7 +20,7 @@ from omniav_detect.evaluation.constants import SYSTEM_PROMPT, USER_PROMPT, USER_
 from omniav_detect.evaluation.metrics import pair_softmax
 
 
-def build_conversation(video_path: str) -> List[Dict[str, Any]]:
+def build_conversation(video_path: str, fps: float | None = None) -> List[Dict[str, Any]]:
     """
     函数功能：
     - 构造与训练一致的 Qwen2.5-Omni 多模态对话。
@@ -31,6 +31,9 @@ def build_conversation(video_path: str) -> List[Dict[str, Any]]:
     返回：
     - Qwen2.5-Omni 聊天模板可读取的 conversation 列表。
     """
+    video_payload: Dict[str, Any] = {"type": "video", "video": video_path}
+    if fps is not None:
+        video_payload["fps"] = fps
     return [
         {
             "role": "system",
@@ -38,12 +41,25 @@ def build_conversation(video_path: str) -> List[Dict[str, Any]]:
         },
         {
             "role": "user",
-            "content": [
-                {"type": "video", "video": video_path},
-                {"type": "text", "text": USER_PROMPT_AFTER_VIDEO},
-            ],
+            "content": [video_payload, {"type": "text", "text": USER_PROMPT_AFTER_VIDEO}],
         },
     ]
+
+
+def extract_video_path(conversation: List[Dict[str, Any]]) -> str:
+    """从 conversation 中提取视频路径，用于兼容旧的 multi-modal 输入格式。"""
+    for message in conversation:
+        if message.get("role") != "user":
+            continue
+        content = message.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "video":
+                value = item.get("video")
+                if value:
+                    return str(value)
+    return ""
 
 
 def resolve_vllm_dtype(dtype_name: str) -> str:
@@ -88,13 +104,17 @@ def build_prompt_text(tokenizer: Any, conversation: List[Dict[str, Any]]) -> str
     return f"{SYSTEM_PROMPT}\n{USER_PROMPT}"
 
 
-def build_multi_modal_data(video_path: str, use_audio_in_video: bool, mm_format: str) -> Dict[str, Any] | None:
+def build_multi_modal_data(
+    conversation: List[Dict[str, Any]],
+    use_audio_in_video: bool,
+    mm_format: str,
+) -> Dict[str, Any] | None:
     """
     函数功能：
     - 构造 vLLM multi-modal 输入数据结构。
 
     参数：
-    - video_path: 视频路径。
+    - conversation: build_conversation 返回的对话结构。
     - use_audio_in_video: 是否使用视频里的音频。
     - mm_format: multi-modal 数据格式。
 
@@ -104,7 +124,28 @@ def build_multi_modal_data(video_path: str, use_audio_in_video: bool, mm_format:
     normalized = str(mm_format).strip().lower()
     if normalized in {"none", "text"}:
         return None
-    if normalized == "video":
+    if normalized in {"video", "qwen_vl", "qwen_vl_utils"}:
+        try:
+            from qwen_vl_utils import process_vision_info
+        except ImportError as exc:
+            raise RuntimeError(
+                "qwen-vl-utils is required to build vLLM video inputs. "
+                "Install it with: pip install qwen-vl-utils"
+            ) from exc
+        image_inputs, video_inputs = process_vision_info(conversation)
+        mm_data: Dict[str, Any] = {}
+        if image_inputs:
+            mm_data["image"] = image_inputs
+        if video_inputs:
+            mm_data["video"] = video_inputs
+        if not mm_data:
+            raise ValueError("process_vision_info returned empty multi-modal inputs")
+        return mm_data
+
+    video_path = extract_video_path(conversation)
+    if not video_path:
+        raise ValueError("No video path found in conversation for multi-modal inputs")
+    if normalized == "video_path":
         return {"video": video_path}
     if normalized == "video_dict":
         return {"video": {"path": video_path, "use_audio": use_audio_in_video}}
@@ -266,10 +307,11 @@ def evaluate_batch(
     返回：
     - 每个样本的预测记录，包含 p_real、p_fake、pred、label 和 meta。
     """
-    conversations = [build_conversation(sample["video_path"]) for sample in samples]
+    conversations = [build_conversation(sample["video_path"], fps=args.fps) for sample in samples]
     prompts = [build_prompt_text(tokenizer, conversation) for conversation in conversations]
     mm_data_list = [
-        build_multi_modal_data(sample["video_path"], args.use_audio_in_video, args.mm_format) for sample in samples
+        build_multi_modal_data(conversation, args.use_audio_in_video, args.mm_format)
+        for conversation in conversations
     ]
 
     prompt_inputs: List[Any] = []

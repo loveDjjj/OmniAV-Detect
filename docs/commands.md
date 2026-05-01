@@ -149,7 +149,7 @@ CUDA_VISIBLE_DEVICES=0,1 python scripts/eval_binary_logits_qwen_omni_vllm.py \
 
 备注：
 
-- 需要安装 vLLM；`mm_format` 需与 vLLM 的多模态接口一致。
+- 需要安装 vLLM 与 `qwen-vl-utils`；默认 `mm_format=video` 会调用 `process_vision_info` 构造 vLLM 所需的视频输入。
 
 ### 批量评估 dry-run
 
