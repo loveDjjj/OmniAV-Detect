@@ -9,10 +9,10 @@ NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 swift sft \
   --model /data/OneDay/models/qwen/Qwen2.5-Omni-7B \
   --model_type qwen2_5_omni \
   --tuner_type lora \
-  --dataset /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_train.jsonl \
+  --dataset /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_train.jsonl \
   --torch_dtype bfloat16 \
-  --num_train_epochs 2 \
-  --per_device_train_batch_size 2 \
+  --num_train_epochs 1 \
+  --per_device_train_batch_size 1 \
   --gradient_accumulation_steps 16 \
   --max_length 1024 \
   --dataloader_num_workers 8 \
@@ -20,4 +20,4 @@ NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 swift sft \
   --logging_steps 10 \
   --save_steps 100 \
   --save_total_limit 2 \
-  --output_dir /data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_binary_lora_audio_in_video
+  --output_dir /data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_mavosdd_binary_lora_audio_in_video

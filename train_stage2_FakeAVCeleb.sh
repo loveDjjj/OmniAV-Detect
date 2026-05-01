@@ -8,7 +8,13 @@ export PYTHONWARNINGS="ignore:PySoundFile failed:UserWarning,ignore:librosa.core
 NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 swift sft \
   --model /data/OneDay/models/qwen/Qwen2.5-Omni-7B \
   --model_type qwen2_5_omni \
-  --tuner_type lora \
+  --tuner_type full \
+  --freeze_llm true \
+  --freeze_vit false \
+  --freeze_aligner false \
+  --vit_lr 1e-6 \
+  --aligner_lr 2e-6 \
+  --learning_rate 1e-6 \
   --dataset /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_train.jsonl \
   --torch_dtype bfloat16 \
   --num_train_epochs 2 \
@@ -16,8 +22,9 @@ NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 swift sft \
   --gradient_accumulation_steps 16 \
   --max_length 1024 \
   --dataloader_num_workers 8 \
-  --learning_rate 1e-5 \
   --logging_steps 10 \
   --save_steps 100 \
   --save_total_limit 2 \
-  --output_dir /data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_binary_lora_audio_in_video
+  --ddp_find_unused_parameters true \
+  --freeze_parameters_regex ".*talker.*|.*token2wav.*" \
+  --output_dir /data/OneDay/OmniAV-Detect/outputs/stage2_qwen2_5_omni_fakeavceleb_binary_audio_in_video
