@@ -1,4 +1,15 @@
-"""Shared helpers for ms-swift audio-video SFT dataset preparation."""
+"""
+本文件功能：
+- 提供 FakeAVCeleb 和 MAVOS-DD 转换为 ms-swift / Qwen2.5-Omni SFT JSONL 的公共工具。
+
+主要内容：
+- scan_video_files：扫描数据集目录并统计视频文件。
+- make_binary_record / make_structured_record：生成 ms-swift 对话格式样本。
+- write_stats：写出扫描摘要、统计文件、缺失/异常文件报告和预览样本。
+
+使用方式：
+- 被 `omniav_detect.data.fakeavceleb` 和 `omniav_detect.data.mavosdd` 复用。
+"""
 
 from __future__ import annotations
 
@@ -120,6 +131,19 @@ def iter_files(root: Path) -> Iterable[Path]:
 
 
 def scan_video_files(root: Path) -> Dict[str, Any]:
+    """
+    函数功能：
+    - 扫描一个数据集根目录，统计一级目录、文件扩展名、视频数量和总大小。
+
+    参数：
+    - root: 数据集根目录。
+
+    返回：
+    - 字典，包含 root 是否存在、一级目录、扩展名计数、视频总数和视频总大小。
+
+    关键逻辑：
+    - 递归遍历真实文件，只把受支持的视频扩展名计入视频总数。
+    """
     summary = {
         "root": abs_path(root),
         "exists": root.exists(),
@@ -201,6 +225,19 @@ def make_messages(user_prompt: str, assistant_content: str) -> List[Dict[str, st
 
 
 def make_binary_record(sample: Sample) -> Record:
+    """
+    函数功能：
+    - 将内部样本转换为 ms-swift binary SFT 记录。
+
+    参数：
+    - sample: 包含 video_path 和 meta 的内部样本。
+
+    返回：
+    - 包含 messages、videos 和 meta 的 JSONL 单行记录。
+
+    关键逻辑：
+    - assistant 只输出 `Real` 或 `Fake`，视频路径保持绝对路径。
+    """
     meta = sample["meta"]
     return {
         "messages": make_messages(BINARY_USER_PROMPT, meta["overall_label"]),
@@ -210,6 +247,19 @@ def make_binary_record(sample: Sample) -> Record:
 
 
 def make_structured_record(sample: Sample) -> Record:
+    """
+    函数功能：
+    - 将内部样本转换为 structured SFT 记录。
+
+    参数：
+    - sample: 包含 video_path 和 meta 的内部样本。
+
+    返回：
+    - assistant content 为 JSON 字符串的 ms-swift 记录。
+
+    关键逻辑：
+    - content 字段仍是字符串，保证整行 JSONL 可解析。
+    """
     meta = sample["meta"]
     payload = {
         "overall_label": meta.get("overall_label", "Unknown"),
@@ -327,6 +377,24 @@ def write_stats(
     num_preview: int,
     seed: int,
 ) -> None:
+    """
+    函数功能：
+    - 写出数据准备阶段的扫描、统计、缺失异常文件和预览样本。
+
+    参数：
+    - output_dir: 输出目录。
+    - scan_summary: 数据集扫描摘要。
+    - outputs: 各 JSONL 输出文件对应的记录。
+    - issues: 缺失或异常文件记录。
+    - num_preview: 每个输出文件保存的预览样本数。
+    - seed: 随机预览采样种子。
+
+    返回：
+    - 无返回值，直接写文件。
+
+    关键逻辑：
+    - 所有统计文件写到同一个 output_dir，便于人工检查数据准备质量。
+    """
     write_json(output_dir / "dataset_scan_summary.json", scan_summary)
     write_json(output_dir / "dataset_stats.json", build_stats(outputs, issues))
     write_missing_or_invalid(output_dir / "missing_or_invalid_files.csv", issues)

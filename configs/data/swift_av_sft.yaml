@@ -1,0 +1,18 @@
+defaults:
+  seed: 42  # 随机切分和预览采样种子
+  num_preview: 10  # 每个输出文件保存的预览样本数
+  max_samples_per_class:  # 每个 Real/Fake 类最多样本数，留空表示不限制
+  dry_run: false  # true 时只写统计和预览，不写训练 JSONL
+
+datasets:
+  fakeavceleb:
+    type: fakeavceleb
+    root: /data/OneDay/FakeAVCeleb  # FakeAVCeleb 本地根目录
+    output_dir: /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb  # 输出 JSONL 和统计文件目录
+    mode: binary  # binary / structured / both
+    train_ratio: 0.7  # FakeAVCeleb 按 overall_label + modality_type 分层切分训练集比例
+
+  mavosdd:
+    type: mavosdd
+    root: /data/OneDay/MAVOS-DD  # MAVOS-DD 本地根目录
+    output_dir: /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd  # 输出 JSONL 和统计文件目录

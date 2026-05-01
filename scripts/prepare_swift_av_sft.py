@@ -1,53 +1,48 @@
 #!/usr/bin/env python3
-"""Compatibility module for audio-video SFT preparation helpers.
+"""
+本文件功能：
+- ms-swift / Qwen2.5-Omni SFT 数据准备统一命令行入口。
 
-Use the dataset-specific entry points instead:
-  - scripts/prepare_fakeavceleb_swift_sft.py
-  - scripts/prepare_mavosdd_swift_sft.py
+主要内容：
+- 将仓库 `src/` 加入导入路径。
+- 调用 `omniav_detect.data.prepare_runner.main`，按 YAML 配置选择单个数据集。
+- 重新导出公共函数和数据集 builder，兼容测试与交互式调试。
+
+使用方式：
+- `python scripts/prepare_swift_av_sft.py --dataset fakeavceleb --config configs/data/swift_av_sft.yaml`
 """
 
 from __future__ import annotations
 
-import logging
 import sys
-from typing import Optional, Sequence
+from pathlib import Path
 
-from prepare_fakeavceleb_swift_sft import (
+
+def _ensure_src_on_path() -> None:
+    """将仓库 src 目录加入 sys.path，保证兼容入口能导入项目包。"""
+    src_dir = Path(__file__).resolve().parents[1] / "src"
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
+
+
+_ensure_src_on_path()
+
+from omniav_detect.data.common import *  # noqa: F401,F403
+from omniav_detect.data.fakeavceleb import (  # noqa: F401
     FAKEAVCELEB_CATEGORIES,
+    build_fakeavceleb_output_records,
     build_fakeavceleb_samples,
     stratified_split,
 )
-from prepare_mavosdd_swift_sft import MAVOS_OUTPUT_SPLITS, build_mavosdd_samples
-from prepare_swift_av_sft_common import (
-    BINARY_USER_PROMPT,
-    STRUCTURED_USER_PROMPT,
-    SYSTEM_PROMPT,
-    build_preview_samples,
-    build_stats,
-    clean_text,
-    count_meta,
-    make_binary_record,
-    make_messages,
-    make_structured_evidence,
-    make_structured_record,
-    scan_video_files,
-    setup_logging,
-    write_json,
-    write_jsonl,
-    write_missing_or_invalid,
-    write_output_jsonl,
-    write_stats,
+from omniav_detect.data import mavosdd  # noqa: F401
+from omniav_detect.data.mavosdd import (  # noqa: F401
+    MAVOS_OUTPUT_SPLITS,
+    build_mavosdd_output_records,
+    build_mavosdd_samples,
 )
-
-
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    setup_logging()
-    logging.error(
-        "The combined prepare_swift_av_sft.py entry point no longer processes multiple datasets. "
-        "Use scripts/prepare_fakeavceleb_swift_sft.py or scripts/prepare_mavosdd_swift_sft.py."
-    )
-    return 2
+from omniav_detect.data.prepare_runner import *  # noqa: F401,F403
+from omniav_detect.data.prepare_runner import main
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

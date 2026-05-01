@@ -1,0 +1,29 @@
+model_path: /data/OneDay/models/qwen/Qwen2.5-Omni-7B  # Qwen2.5-Omni 基座模型路径
+output_root: /data/OneDay/OmniAV-Detect/outputs/batch_eval_binary  # 批量评估汇总输出根目录
+
+defaults:
+  torch_dtype: bfloat16  # 模型加载 dtype
+  device_map: auto  # transformers/accelerate 设备映射
+  batch_size: 1  # 评估 batch size，显存不足时保持 1
+  fps: 2.0  # 视频采样 fps
+  save_every: 100  # 每多少条样本保存一次中间预测
+  fake_token_id: 52317  # Qwen tokenizer 中 Fake token id
+  real_token_id: 12768  # Qwen tokenizer 中 Real token id
+  use_audio_in_video: true  # 是否在视频输入中启用音频
+  max_samples:  # 小样本调试时填写整数，留空表示全量
+
+runs:
+  - name: stage2_only_fakeavceleb_encoder_full__fakeavceleb_eval
+    dataset: FakeAVCeleb
+    adapter_path: /data/OneDay/OmniAV-Detect/outputs/stage2_only_fakeavceleb_encoder_full/checkpoint-944  # LoRA checkpoint
+    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_eval.jsonl  # 评估 JSONL
+
+  - name: stage1_qwen2_5_omni_mavosdd_binary__mavosdd_test_all
+    dataset: MAVOS-DD
+    adapter_path: /data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_mavosdd_binary/checkpoint-668  # LoRA checkpoint
+    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_test_all.jsonl  # 评估 JSONL
+
+  - name: stage1_qwen2_5_omni_fakeavceleb_binary__fakeavceleb_eval
+    dataset: FakeAVCeleb
+    adapter_path: /data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_binary/checkpoint-944  # LoRA checkpoint
+    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_eval.jsonl  # 评估 JSONL

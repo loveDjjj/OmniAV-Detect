@@ -24,35 +24,45 @@ class PrepareSwiftAvSftTests(unittest.TestCase):
     def setUp(self):
         self.prepare = load_prepare_module()
 
-    def test_dataset_modules_have_separate_entries(self):
-        import prepare_fakeavceleb_swift_sft
-        import prepare_mavosdd_swift_sft
-
-        self.assertTrue(callable(prepare_fakeavceleb_swift_sft.main))
-        self.assertTrue(callable(prepare_mavosdd_swift_sft.main))
-
-    def test_fakeavceleb_entry_writes_only_fakeavceleb_outputs(self):
-        import prepare_fakeavceleb_swift_sft
-
+    def test_unified_entry_selects_fakeavceleb_from_yaml_config(self):
         scratch = Path(__file__).resolve().parent / ".tmp"
         scratch.mkdir(exist_ok=True)
-        root = scratch / f"fakeavceleb_entry_{uuid.uuid4().hex}"
+        root = scratch / f"fakeavceleb_unified_{uuid.uuid4().hex}"
         output_dir = scratch / f"fakeavceleb_output_{uuid.uuid4().hex}"
+        config_path = scratch / f"prepare_config_{uuid.uuid4().hex}.yaml"
         for dirname in self.prepare.FAKEAVCELEB_CATEGORIES:
             (root / dirname).mkdir(parents=True)
         (root / "RealVideo-RealAudio" / "real.mp4").write_bytes(b"video")
         (root / "FakeVideo-FakeAudio" / "fake.mp4").write_bytes(b"video")
+        config_path.write_text(
+            "\n".join(
+                [
+                    "defaults:",
+                    "  seed: 42",
+                    "  num_preview: 2",
+                    "datasets:",
+                    "  fakeavceleb:",
+                    "    type: fakeavceleb",
+                    f"    root: {root.as_posix()}",
+                    f"    output_dir: {output_dir.as_posix()}",
+                    "    mode: both",
+                    "    train_ratio: 0.7",
+                    "  mavosdd:",
+                    "    type: mavosdd",
+                    "    root: /does/not/matter",
+                    "    output_dir: /does/not/matter",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
 
-        exit_code = prepare_fakeavceleb_swift_sft.main(
+        exit_code = self.prepare.main(
             [
-                "--fakeavceleb_root",
-                str(root),
-                "--output_dir",
-                str(output_dir),
-                "--mode",
-                "both",
-                "--num_preview",
-                "2",
+                "--config",
+                str(config_path),
+                "--dataset",
+                "fakeavceleb",
             ]
         )
 
@@ -63,16 +73,35 @@ class PrepareSwiftAvSftTests(unittest.TestCase):
         stats = json.loads((output_dir / "dataset_stats.json").read_text(encoding="utf-8"))
         self.assertTrue(all(name.startswith("fakeavceleb") for name in stats["outputs"]))
 
-    def test_mavosdd_entry_writes_only_mavosdd_outputs(self):
-        import prepare_mavosdd_swift_sft
-
+    def test_unified_entry_selects_mavosdd_from_yaml_config(self):
         scratch = Path(__file__).resolve().parent / ".tmp"
         scratch.mkdir(exist_ok=True)
-        root = scratch / f"mavosdd_entry_{uuid.uuid4().hex}"
+        root = scratch / f"mavosdd_unified_{uuid.uuid4().hex}"
         output_dir = scratch / f"mavosdd_output_{uuid.uuid4().hex}"
+        config_path = scratch / f"prepare_config_{uuid.uuid4().hex}.yaml"
         (root / "english").mkdir(parents=True)
         video_path = root / "english" / "real.mp4"
         video_path.write_bytes(b"video")
+        config_path.write_text(
+            "\n".join(
+                [
+                    "defaults:",
+                    "  seed: 42",
+                    "  num_preview: 2",
+                    "datasets:",
+                    "  fakeavceleb:",
+                    "    type: fakeavceleb",
+                    "    root: /does/not/matter",
+                    "    output_dir: /does/not/matter",
+                    "  mavosdd:",
+                    "    type: mavosdd",
+                    f"    root: {root.as_posix()}",
+                    f"    output_dir: {output_dir.as_posix()}",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
         rows = [
             {
                 "video_path": "english/real.mp4",
@@ -85,15 +114,13 @@ class PrepareSwiftAvSftTests(unittest.TestCase):
             }
         ]
 
-        with mock.patch.object(prepare_mavosdd_swift_sft, "load_mavos_dataset", return_value=rows):
-            exit_code = prepare_mavosdd_swift_sft.main(
+        with mock.patch.object(self.prepare.mavosdd, "load_mavos_dataset", return_value=rows):
+            exit_code = self.prepare.main(
                 [
-                    "--mavos_root",
-                    str(root),
-                    "--output_dir",
-                    str(output_dir),
-                    "--num_preview",
-                    "2",
+                    "--config",
+                    str(config_path),
+                    "--dataset",
+                    "mavosdd",
                 ]
             )
 

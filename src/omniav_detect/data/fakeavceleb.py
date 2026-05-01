@@ -1,17 +1,26 @@
-"""FakeAVCeleb-specific conversion logic for ms-swift/Qwen2.5-Omni SFT."""
+"""
+本文件功能：
+- 负责扫描 FakeAVCeleb 本地视频并生成 ms-swift / Qwen2.5-Omni SFT JSONL。
+
+主要内容：
+- build_fakeavceleb_samples：从四个 FakeAVCeleb 模态目录构建有效样本。
+- stratified_split：按 overall_label + modality_type 分层切分 train/eval。
+- build_fakeavceleb_output_records：生成 binary / structured 输出记录。
+
+使用方式：
+- 被统一入口 `omniav_detect.data.prepare_runner` 调用。
+"""
 
 from __future__ import annotations
 
-import argparse
 import csv
 import logging
 import random
-import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from prepare_swift_av_sft_common import (
+from omniav_detect.data.common import (
     Issue,
     SUPPORTED_VIDEO_EXTENSIONS,
     Sample,
@@ -26,10 +35,6 @@ from prepare_swift_av_sft_common import (
     normalize_json_value,
     record_issue,
     safe_relative_path,
-    scan_video_files,
-    setup_logging,
-    write_output_jsonl,
-    write_stats,
 )
 
 
@@ -217,6 +222,22 @@ def build_fakeavceleb_samples(
     seed: int,
     missing_or_invalid: List[Issue],
 ) -> List[Sample]:
+    """
+    函数功能：
+    - 扫描 FakeAVCeleb 四类目录，构建本地真实存在且可用的视频样本。
+
+    参数：
+    - root: FakeAVCeleb 根目录。
+    - max_samples_per_class: 每个 Real/Fake 类最多保留的样本数，None 表示不限制。
+    - seed: 类内限量抽样的随机种子。
+    - missing_or_invalid: 用于累积缺失、空文件、非法扩展名等问题。
+
+    返回：
+    - 有效样本列表，每个样本包含绝对视频路径和训练所需 meta。
+
+    关键逻辑：
+    - 优先扫描本地真实文件；metadata 只用于补充信息和报告缺失文件。
+    """
     if not root.exists():
         logging.warning("FakeAVCeleb root does not exist: %s", root)
         record_issue(missing_or_invalid, "FakeAVCeleb", "scan", "missing_root", root)
@@ -296,6 +317,21 @@ def build_fakeavceleb_samples(
 def stratified_split(
     samples: List[Sample], train_ratio: float, seed: int
 ) -> Tuple[List[Sample], List[Sample]]:
+    """
+    函数功能：
+    - 对 FakeAVCeleb 样本做分层 train/eval 切分。
+
+    参数：
+    - samples: 有效样本列表。
+    - train_ratio: 训练集比例。
+    - seed: 分层打乱随机种子。
+
+    返回：
+    - train 样本列表和 eval 样本列表。
+
+    关键逻辑：
+    - 分层键为 `(overall_label, modality_type)`，避免不同模态组合分布严重漂移。
+    """
     grouped: Dict[Tuple[str, str], List[Sample]] = defaultdict(list)
     for sample in samples:
         meta = sample.get("meta", {})
@@ -321,7 +357,7 @@ def stratified_split(
     return train, eval_samples
 
 
-def build_fakeavceleb_output_records(samples: List[Sample], args: argparse.Namespace) -> Dict[str, List[Dict[str, Any]]]:
+def build_fakeavceleb_output_records(samples: List[Sample], args: Any) -> Dict[str, List[Dict[str, Any]]]:
     outputs: Dict[str, List[Dict[str, Any]]] = {}
     train_samples, eval_samples = stratified_split(samples, args.fakeavceleb_train_ratio, args.seed)
 
@@ -338,57 +374,3 @@ def build_fakeavceleb_output_records(samples: List[Sample], args: argparse.Names
         ]
 
     return outputs
-
-
-def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Convert local FakeAVCeleb videos to ms-swift/Qwen2.5-Omni SFT jsonl."
-    )
-    parser.add_argument("--fakeavceleb_root", default="/data/OneDay/FakeAVCeleb")
-    parser.add_argument("--output_dir", default="/data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb")
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--fakeavceleb_train_ratio", type=float, default=0.7)
-    parser.add_argument("--mode", choices=["binary", "structured", "both"], default="binary")
-    parser.add_argument("--max_samples_per_class", type=int, default=None)
-    parser.add_argument("--dry_run", action="store_true")
-    parser.add_argument("--num_preview", type=int, default=10)
-    return parser.parse_args(argv)
-
-
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    setup_logging()
-    args = parse_args(argv)
-    root = Path(args.fakeavceleb_root).expanduser()
-    output_dir = Path(args.output_dir).expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    if not 0 < args.fakeavceleb_train_ratio < 1:
-        logging.error("--fakeavceleb_train_ratio must be between 0 and 1")
-        return 2
-    if args.max_samples_per_class is not None and args.max_samples_per_class < 1:
-        logging.error("--max_samples_per_class must be positive when provided")
-        return 2
-
-    logging.info("Preparing FakeAVCeleb with mode=%s, dry_run=%s", args.mode, args.dry_run)
-    logging.info("FakeAVCeleb root: %s", root)
-    logging.info("Output dir: %s", output_dir)
-
-    issues: List[Issue] = []
-    scan_summary = {"FakeAVCeleb": scan_video_files(root)}
-    samples = build_fakeavceleb_samples(
-        root=root,
-        max_samples_per_class=args.max_samples_per_class,
-        seed=args.seed,
-        missing_or_invalid=issues,
-    )
-    outputs = build_fakeavceleb_output_records(samples, args)
-
-    write_output_jsonl(output_dir, outputs, args.dry_run)
-    write_stats(output_dir, scan_summary, outputs, issues, args.num_preview, args.seed)
-
-    logging.info("Prepared %d FakeAVCeleb output jsonl definitions.", len(outputs))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

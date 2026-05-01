@@ -1,14 +1,23 @@
-"""MAVOS-DD-specific conversion logic for ms-swift/Qwen2.5-Omni SFT."""
+"""
+本文件功能：
+- 负责读取 MAVOS-DD 本地 Arrow 数据与视频文件，生成 ms-swift / Qwen2.5-Omni binary SFT JSONL。
+
+主要内容：
+- load_mavos_dataset：通过 datasets.load_from_disk 读取本地数据。
+- build_mavosdd_samples：校验视频文件并按官方 split/open-set 字段构建样本。
+- build_mavosdd_output_records：生成 MAVOS-DD binary 输出记录。
+
+使用方式：
+- 被统一入口 `omniav_detect.data.prepare_runner` 调用。
+"""
 
 from __future__ import annotations
 
-import argparse
 import logging
-import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from prepare_swift_av_sft_common import (
+from omniav_detect.data.common import (
     Issue,
     SUPPORTED_VIDEO_EXTENSIONS,
     Sample,
@@ -19,10 +28,6 @@ from prepare_swift_av_sft_common import (
     make_binary_record,
     normalize_bool,
     record_issue,
-    scan_video_files,
-    setup_logging,
-    write_output_jsonl,
-    write_stats,
 )
 
 
@@ -38,6 +43,19 @@ MAVOS_OUTPUT_SPLITS = (
 
 
 def load_mavos_dataset(root: Path) -> Optional[Any]:
+    """
+    函数功能：
+    - 使用 Hugging Face datasets 从本地 MAVOS-DD 目录读取 Arrow 数据。
+
+    参数：
+    - root: MAVOS-DD 根目录。
+
+    返回：
+    - datasets.Dataset 或 DatasetDict；读取失败时返回 None。
+
+    关键逻辑：
+    - `datasets` 是可选依赖，缺失时只记录提示，不中断整个脚本导入。
+    """
     if not root.exists():
         logging.warning("MAVOS-DD root does not exist: %s", root)
         return None
@@ -96,6 +114,22 @@ def build_mavosdd_samples(
     seed: int,
     missing_or_invalid: List[Issue],
 ) -> Dict[str, List[Sample]]:
+    """
+    函数功能：
+    - 从 MAVOS-DD metadata 构建 train/validation/test/open-set 各输出 split 的有效样本。
+
+    参数：
+    - root: MAVOS-DD 根目录。
+    - max_samples_per_class: 每个 Real/Fake 类最多保留的样本数，None 表示不限制。
+    - seed: 类内限量抽样的随机种子。
+    - missing_or_invalid: 用于累积缺失和异常文件记录。
+
+    返回：
+    - split 名称到样本列表的映射。
+
+    关键逻辑：
+    - 只使用 metadata 中的 overall real/fake 标签，不伪造音频/视频单模态标签。
+    """
     split_samples = {split: [] for split in MAVOS_OUTPUT_SPLITS}
     if not root.exists():
         record_issue(missing_or_invalid, "MAVOS-DD", "scan", "missing_root", root)
@@ -218,52 +252,3 @@ def build_mavosdd_output_records(split_samples: Dict[str, List[Sample]]) -> Dict
             make_binary_record(sample) for sample in split_samples[split_name]
         ]
     return outputs
-
-
-def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Convert local MAVOS-DD videos to ms-swift/Qwen2.5-Omni binary SFT jsonl."
-    )
-    parser.add_argument("--mavos_root", default="/data/OneDay/MAVOS-DD")
-    parser.add_argument("--output_dir", default="/data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd")
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--max_samples_per_class", type=int, default=None)
-    parser.add_argument("--dry_run", action="store_true")
-    parser.add_argument("--num_preview", type=int, default=10)
-    return parser.parse_args(argv)
-
-
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    setup_logging()
-    args = parse_args(argv)
-    root = Path(args.mavos_root).expanduser()
-    output_dir = Path(args.output_dir).expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    if args.max_samples_per_class is not None and args.max_samples_per_class < 1:
-        logging.error("--max_samples_per_class must be positive when provided")
-        return 2
-
-    logging.info("Preparing MAVOS-DD binary SFT data, dry_run=%s", args.dry_run)
-    logging.info("MAVOS-DD root: %s", root)
-    logging.info("Output dir: %s", output_dir)
-
-    issues: List[Issue] = []
-    scan_summary = {"MAVOS-DD": scan_video_files(root)}
-    split_samples = build_mavosdd_samples(
-        root=root,
-        max_samples_per_class=args.max_samples_per_class,
-        seed=args.seed,
-        missing_or_invalid=issues,
-    )
-    outputs = build_mavosdd_output_records(split_samples)
-
-    write_output_jsonl(output_dir, outputs, args.dry_run)
-    write_stats(output_dir, scan_summary, outputs, issues, args.num_preview, args.seed)
-
-    logging.info("Prepared %d MAVOS-DD output jsonl definitions.", len(outputs))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

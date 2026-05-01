@@ -169,8 +169,29 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
         self.assertEqual(metrics["prediction_distribution"], {"Real": 2, "Fake": 1})
         self.assertEqual(metrics["confusion_matrix_labels"], ["Fake", "Real"])
         self.assertEqual(metrics["confusion_matrix"], [[1, 1], [0, 1]])
+        self.assertTrue(math.isclose(metrics["fake_recall"], 0.5, rel_tol=1e-9))
+        self.assertTrue(math.isclose(metrics["real_recall"], 1.0, rel_tol=1e-9))
         self.assertTrue(math.isclose(metrics["roc_auc"], 1.0, rel_tol=1e-9))
         self.assertTrue(math.isclose(metrics["average_precision"], 1.0, rel_tol=1e-9))
+
+    def test_save_outputs_writes_visualization_artifacts(self):
+        scratch = Path(__file__).resolve().parent / ".tmp"
+        scratch.mkdir(exist_ok=True)
+        output_dir = scratch / f"eval_visuals_{uuid.uuid4().hex}"
+        predictions = [
+            {"label": "Real", "pred": "Real", "p_fake": 0.1, "p_real": 0.9},
+            {"label": "Fake", "pred": "Fake", "p_fake": 0.9, "p_real": 0.1},
+            {"label": "Fake", "pred": "Real", "p_fake": 0.4, "p_real": 0.6},
+        ]
+
+        metrics = self.eval_module.save_outputs(output_dir, predictions, [], {"run": "test"})
+
+        visual_dir = output_dir / "visualizations"
+        self.assertEqual(metrics["visualizations_dir"], str(visual_dir))
+        self.assertTrue((visual_dir / "confusion_matrix.csv").exists())
+        self.assertTrue((visual_dir / "score_distribution.csv").exists())
+        self.assertTrue((visual_dir / "summary.html").exists())
+        self.assertIn("Fake recall", (visual_dir / "summary.html").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
