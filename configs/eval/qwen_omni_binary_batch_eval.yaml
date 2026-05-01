@@ -5,7 +5,7 @@ defaults:
   torch_dtype: bfloat16  # 模型加载 dtype
   device_map: auto  # transformers/accelerate 设备映射
   batch_size: 1  # 评估 batch size，显存不足时保持 1
-  fps: 2.0  # 视频采样 fps
+  fps: 4.0  # 视频采样 fps
   save_every: 100  # 每多少条样本保存一次中间预测
   fake_token_id: 52317  # Qwen tokenizer 中 Fake token id
   real_token_id: 12768  # Qwen tokenizer 中 Real token id
