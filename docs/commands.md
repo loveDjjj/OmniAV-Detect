@@ -117,6 +117,40 @@ CUDA_VISIBLE_DEVICES=0,1 python scripts/eval_binary_logits_qwen_omni.py \
 
 - matplotlib 可用时会额外生成 PNG；不可用时仍会生成标准库实现的 CSV / HTML。
 
+### 单 checkpoint vLLM 评估
+
+用途：用 vLLM 后端跑 50 条样本，验证 logprob 评估流程。
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 python scripts/eval_binary_logits_qwen_omni_vllm.py \
+  --model_path /data/OneDay/models/qwen/Qwen2.5-Omni-7B \
+  --adapter_path /data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_binary/checkpoint-944 \
+  --jsonl /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_eval.jsonl \
+  --output_dir /data/OneDay/OmniAV-Detect/outputs/eval_debug/fakeavceleb_stage1_50_vllm \
+  --batch_size 1 \
+  --max_samples 50 \
+  --mm_format video
+```
+
+输入：
+
+- Qwen2.5-Omni 基座模型
+- LoRA checkpoint
+- binary eval JSONL
+
+输出：
+
+- `predictions.jsonl`
+- `bad_samples.jsonl`
+- `metrics.json`
+- `visualizations/confusion_matrix.csv`
+- `visualizations/score_distribution.csv`
+- `visualizations/summary.html`
+
+备注：
+
+- 需要安装 vLLM；`mm_format` 需与 vLLM 的多模态接口一致。
+
 ### 批量评估 dry-run
 
 用途：检查 YAML 配置会展开成哪些评估命令。
@@ -160,6 +194,7 @@ CUDA_VISIBLE_DEVICES=0,1 python scripts/eval_batch_binary_qwen_omni.py \
 
 - 使用 `--only <run_name>` 可以只运行一个 run。
 - 使用 `--batch_size`、`--fps`、`--max_samples` 可以临时覆盖 YAML 默认值。
+- 使用 `--eval_script scripts/eval_binary_logits_qwen_omni_vllm.py` 可切换到 vLLM 后端。
 
 ## 常用检查命令
 

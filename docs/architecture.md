@@ -13,6 +13,8 @@
 - MAVOS-DD：`src/omniav_detect/data/mavosdd.py` 负责 `datasets.load_from_disk`、视频路径解析和 open-set split 归类。
 - 单模型评估入口：`src/omniav_detect/evaluation/binary_logits.py` 负责任务编排、失败样本隔离和增量保存。
 - 模型运行：`src/omniav_detect/evaluation/model_runtime.py` 加载 Qwen2.5-Omni 基座和 LoRA adapter，处理多模态输入并执行 logits forward。
+- vLLM 评估入口：`src/omniav_detect/evaluation/binary_logits_vllm.py` 负责 vLLM 后端的评估主流程。
+- vLLM 运行时：`src/omniav_detect/evaluation/vllm_runtime.py` 负责 vLLM 引擎加载、多模态输入和 logprob 解析。
 - 指标计算：`src/omniav_detect/evaluation/metrics.py` 计算 Accuracy、AUC、AP/mAP、Confusion Matrix、Fake recall 和 Real recall。
 - 评估输出：`src/omniav_detect/evaluation/outputs.py` 写出预测、坏样本、指标和可视化；`visualization.py` 生成 CSV/HTML，可选生成 PNG。
 - 批量评估：`src/omniav_detect/evaluation/batch_runner.py` 读取 `configs/eval/qwen_omni_binary_batch_eval.yaml`，逐个子进程调用单模型评估。
@@ -24,6 +26,7 @@
 - `scripts/prepare_swift_av_sft.py` → `omniav_detect.data.prepare_runner.main`
 - `prepare_runner.prepare_dataset` → `fakeavceleb.build_fakeavceleb_samples` 或 `mavosdd.build_mavosdd_samples`
 - `scripts/eval_binary_logits_qwen_omni.py` → `omniav_detect.evaluation.binary_logits.main`
+- `scripts/eval_binary_logits_qwen_omni_vllm.py` → `omniav_detect.evaluation.binary_logits_vllm.main`
 - `scripts/eval_batch_binary_qwen_omni.py` → `omniav_detect.evaluation.batch_runner.main`
 - `batch_runner.build_eval_command` → 子进程执行 `scripts/eval_binary_logits_qwen_omni.py`
 
