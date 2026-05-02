@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 本文件功能：
-- 组织 Qwen2.5-Omni LoRA binary deepfake detector 的单 checkpoint 评估主流程。
+- 组织 Qwen2.5-Omni binary deepfake detector 的单 checkpoint 评估主流程。
 
 主要内容：
 - parse_args / setup_logging：命令行参数和日志初始化。
@@ -56,10 +56,10 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     - argparse.Namespace，包含模型、adapter、数据、batch 和输出参数。
     """
     parser = argparse.ArgumentParser(
-        description="Evaluate a Qwen2.5-Omni LoRA binary deepfake detector with Real/Fake token logits."
+        description="Evaluate a Qwen2.5-Omni binary deepfake detector with Real/Fake token logits."
     )
     parser.add_argument("--model_path", default="/data/OneDay/models/qwen/Qwen2.5-Omni-7B")
-    parser.add_argument("--adapter_path", required=True)
+    parser.add_argument("--adapter_path", default=None, help="Optional LoRA checkpoint path. Omit for base-model evaluation.")
     parser.add_argument("--jsonl", required=True)
     parser.add_argument("--output_dir", required=True)
     parser.add_argument("--max_samples", type=int, default=None)

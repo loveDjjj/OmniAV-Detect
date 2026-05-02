@@ -1,9 +1,9 @@
 """
 本文件功能：
-- 负责 Qwen2.5-Omni LoRA binary detector 的模型加载、多模态输入构造和 logits 推理。
+- 负责 Qwen2.5-Omni binary detector 的模型加载、多模态输入构造和 logits 推理。
 
 主要内容：
-- load_model_and_processor：加载 Qwen2.5-Omni 基座、LoRA adapter 和 processor。
+- load_model_and_processor：加载 Qwen2.5-Omni 基座、可选 LoRA adapter 和 processor。
 - prepare_inputs：优先使用 qwen_omni_utils/decord 路径处理视频和音频。
 - evaluate_batch / evaluate_sample：执行 Real/Fake token logits 评估。
 
@@ -67,7 +67,7 @@ def resolve_torch_dtype(dtype_name: str, torch_module: Any) -> Any:
 def load_model_and_processor(args: argparse.Namespace) -> Tuple[Any, Any]:
     """
     函数功能：
-    - 加载 Qwen2.5-Omni 基座模型、LoRA adapter 和 processor。
+    - 加载 Qwen2.5-Omni 基座模型、可选 LoRA adapter 和 processor。
 
     参数：
     - args: 评估 CLI 参数，包含 model_path、adapter_path、dtype、device_map。
@@ -93,8 +93,11 @@ def load_model_and_processor(args: argparse.Namespace) -> Tuple[Any, Any]:
         device_map=args.device_map,
         enable_audio_output=False,
     )
-    logging.info("Loading LoRA adapter from %s", args.adapter_path)
-    model = PeftModel.from_pretrained(model, args.adapter_path)
+    if args.adapter_path:
+        logging.info("Loading LoRA adapter from %s", args.adapter_path)
+        model = PeftModel.from_pretrained(model, args.adapter_path)
+    else:
+        logging.info("Running base-model evaluation without LoRA adapter")
     model.eval()
     processor = Qwen2_5OmniProcessor.from_pretrained(args.model_path)
     return model, processor

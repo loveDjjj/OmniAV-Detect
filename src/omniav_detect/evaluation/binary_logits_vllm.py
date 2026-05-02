@@ -108,11 +108,23 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.set_defaults(trust_remote_code=True)
     parser.add_argument(
         "--mm_format",
-        default="video",
-        choices=["video", "qwen_vl", "qwen_vl_utils", "video_path", "video_dict", "videos_list", "video_audio", "none"],
+        default="omni_av",
+        choices=[
+            "omni_av",
+            "qwen_omni",
+            "audio_video",
+            "video",
+            "qwen_vl",
+            "qwen_vl_utils",
+            "video_path",
+            "video_dict",
+            "videos_list",
+            "video_audio",
+            "none",
+        ],
         help=(
-            "Multi-modal input format passed to vLLM. 'video' uses qwen-vl-utils/process_vision_info; "
-            "use 'video_path' to pass raw paths (legacy)."
+            "Multi-modal input format passed to vLLM. 'omni_av' uses qwen_omni_utils/process_mm_info "
+            "for audio-video input; 'video' uses qwen-vl-utils/process_vision_info for video-only input."
         ),
     )
     parser.add_argument("--temperature", type=float, default=0.0)

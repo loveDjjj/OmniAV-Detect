@@ -50,8 +50,6 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
     def test_parse_args_defaults_to_single_sample_batches(self):
         args = self.eval_module.parse_args(
             [
-                "--adapter_path",
-                "adapter",
                 "--jsonl",
                 "eval.jsonl",
                 "--output_dir",
@@ -61,6 +59,69 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
 
         self.assertEqual(args.batch_size, 1)
         self.assertTrue(args.use_audio_in_video)
+        self.assertIsNone(args.adapter_path)
+
+    def test_load_model_and_processor_skips_peft_when_adapter_path_is_missing(self):
+        calls = []
+
+        class FakeBaseModel:
+            def eval(self):
+                calls.append(("eval", None))
+                return self
+
+        class FakeProcessor:
+            pass
+
+        class FakeQwenModelClass:
+            @staticmethod
+            def from_pretrained(*args, **kwargs):
+                calls.append(("base_model", {"args": args, "kwargs": kwargs}))
+                return FakeBaseModel()
+
+        class FakeProcessorClass:
+            @staticmethod
+            def from_pretrained(model_path):
+                calls.append(("processor", model_path))
+                return FakeProcessor()
+
+        fake_torch = types.SimpleNamespace(bfloat16="bf16")
+        fake_transformers = types.SimpleNamespace(
+            Qwen2_5OmniForConditionalGeneration=FakeQwenModelClass,
+            Qwen2_5OmniProcessor=FakeProcessorClass,
+        )
+        fake_peft = types.SimpleNamespace(
+            PeftModel=types.SimpleNamespace(
+                from_pretrained=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("PEFT should not be used"))
+            )
+        )
+        old_torch = sys.modules.get("torch")
+        old_peft = sys.modules.get("peft")
+        old_transformers = sys.modules.get("transformers")
+        sys.modules["torch"] = fake_torch
+        sys.modules["peft"] = fake_peft
+        sys.modules["transformers"] = fake_transformers
+        try:
+            args = types.SimpleNamespace(model_path="/model", adapter_path=None, torch_dtype="bfloat16", device_map="auto")
+            model, processor = self.eval_module.load_model_and_processor(args)
+        finally:
+            if old_torch is None:
+                sys.modules.pop("torch", None)
+            else:
+                sys.modules["torch"] = old_torch
+            if old_peft is None:
+                sys.modules.pop("peft", None)
+            else:
+                sys.modules["peft"] = old_peft
+            if old_transformers is None:
+                sys.modules.pop("transformers", None)
+            else:
+                sys.modules["transformers"] = old_transformers
+
+        self.assertIsInstance(model, FakeBaseModel)
+        self.assertIsInstance(processor, FakeProcessor)
+        self.assertEqual(calls[0][0], "base_model")
+        self.assertEqual(calls[1][0], "eval")
+        self.assertEqual(calls[2], ("processor", "/model"))
 
     def test_batch_samples_groups_samples_without_dropping_tail(self):
         samples = [{"index": idx} for idx in range(5)]

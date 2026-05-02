@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-OmniAV-Detect 面向 audio-video deepfake detection，当前支持把 FakeAVCeleb 和 MAVOS-DD 本地数据转换为 ms-swift / Qwen2.5-Omni SFT JSONL，并评估 Qwen2.5-Omni LoRA binary detector 的 `Real` / `Fake` token logits。
+OmniAV-Detect 面向 audio-video deepfake detection，当前支持把 FakeAVCeleb 和 MAVOS-DD 本地数据转换为 ms-swift / Qwen2.5-Omni SFT JSONL，并评估 Qwen2.5-Omni 基模或 LoRA binary detector 的 `Real` / `Fake` token logits。
 
 ## 项目结构
 
@@ -25,6 +25,7 @@ docs/                         # 命令、架构、记录
 - `configs/eval/qwen_omni_binary_batch_eval.yaml`：三个 Qwen2.5-Omni LoRA checkpoint 的批量评估配置。
 - `scripts/prepare_swift_av_sft.py`：统一数据准备入口，通过 `--dataset` 选择一个数据集。
 - `scripts/eval_binary_logits_qwen_omni.py`：单 checkpoint logits 评估入口。
+- `scripts/eval_parallel_binary_qwen_omni.py`：按 GPU 切分 JSONL 并发评估入口。
 - `scripts/eval_binary_logits_qwen_omni_vllm.py`：vLLM 后端单 checkpoint logits 评估入口。
 - `scripts/eval_batch_binary_qwen_omni.py`：批量评估入口。
 - `src/omniav_detect/data/common.py`：视频扫描、ms-swift record 构造、统计文件写出。
@@ -33,6 +34,7 @@ docs/                         # 命令、架构、记录
 - `src/omniav_detect/data/mavosdd.py`：MAVOS-DD Arrow metadata 读取和 open-set split 解析。
 - `src/omniav_detect/evaluation/binary_logits.py`：单 checkpoint 评估主流程。
 - `src/omniav_detect/evaluation/model_runtime.py`：Qwen2.5-Omni + LoRA 加载、多模态输入处理和 logits forward。
+- `src/omniav_detect/evaluation/parallel_runner.py`：多 GPU JSONL 分片、worker 调度、预测合并和指标重算。
 - `src/omniav_detect/evaluation/binary_logits_vllm.py`：vLLM 后端单 checkpoint 评估主流程。
 - `src/omniav_detect/evaluation/vllm_runtime.py`：vLLM 推理、多模态输入和 logprob 解析。
 - `src/omniav_detect/evaluation/metrics.py`：Accuracy、AUC、AP/mAP、Confusion Matrix 和 recall 指标计算。

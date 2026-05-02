@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import logging
 from typing import Any, Dict, List, Sequence, Tuple
 
@@ -124,6 +125,8 @@ def build_multi_modal_data(
     normalized = str(mm_format).strip().lower()
     if normalized in {"none", "text"}:
         return None
+    if normalized in {"omni_av", "qwen_omni", "audio_video"}:
+        return build_omni_av_multi_modal_data(conversation, use_audio_in_video)
     if normalized in {"video", "qwen_vl", "qwen_vl_utils"}:
         try:
             from qwen_vl_utils import process_vision_info
@@ -157,6 +160,51 @@ def build_multi_modal_data(
             data["audio"] = video_path
         return data
     raise ValueError(f"Unsupported mm_format: {mm_format}")
+
+
+def build_omni_av_multi_modal_data(
+    conversation: List[Dict[str, Any]],
+    use_audio_in_video: bool,
+) -> Dict[str, Any]:
+    """
+    函数功能：
+    - 使用 Qwen2.5-Omni 官方工具构造 vLLM 的 audio+video multi_modal_data。
+
+    参数：
+    - conversation: build_conversation 返回的对话结构。
+    - use_audio_in_video: 是否从视频中抽取音频。
+
+    返回：
+    - 包含 audio/video/image 的 multi_modal_data 字典。
+
+    关键逻辑：
+    - 默认 vLLM 加速路径要与 Transformers 路径一样使用 `process_mm_info`，避免只传视频帧。
+    - 如果请求音频但没有得到 audio 输入，直接报错，避免误以为做了双模态评估。
+    """
+    try:
+        from qwen_omni_utils import process_mm_info
+    except ImportError as exc:
+        raise RuntimeError(
+            "qwen_omni_utils is required for vLLM audio-video inputs. "
+            "Install it before using --mm_format omni_av."
+        ) from exc
+
+    audios, images, videos = process_mm_info(conversation, use_audio_in_video=use_audio_in_video)
+    mm_data: Dict[str, Any] = {}
+    if audios:
+        mm_data["audio"] = audios
+    if images:
+        mm_data["image"] = images
+    if videos:
+        mm_data["video"] = videos
+    if use_audio_in_video and not audios:
+        raise ValueError(
+            "Audio was requested for vLLM evaluation but qwen_omni_utils returned no audio inputs. "
+            "Use --no_use_audio_in_video for video-only evaluation or check that the source video has audio."
+        )
+    if not mm_data:
+        raise ValueError("qwen_omni_utils.process_mm_info returned empty multi-modal inputs")
+    return mm_data
 
 
 def load_vllm_engine(args: argparse.Namespace) -> Tuple[Any, Any, Any]:
@@ -219,14 +267,17 @@ def build_sampling_params(args: argparse.Namespace) -> Any:
     except ImportError as exc:
         raise RuntimeError("Missing vLLM dependency. Please install vllm before using the vLLM backend.") from exc
 
-    return SamplingParams(
-        temperature=args.temperature,
-        top_p=args.top_p,
-        max_tokens=args.max_new_tokens,
-        logprobs=args.logprobs,
-        logprob_token_ids=[args.real_token_id, args.fake_token_id],
-        prompt_logprobs=0,
-    )
+    kwargs: Dict[str, Any] = {
+        "temperature": args.temperature,
+        "top_p": args.top_p,
+        "max_tokens": args.max_new_tokens,
+        "logprobs": args.logprobs,
+        "prompt_logprobs": 0,
+    }
+    signature = inspect.signature(SamplingParams)
+    if "logprob_token_ids" in signature.parameters:
+        kwargs["logprob_token_ids"] = [args.real_token_id, args.fake_token_id]
+    return SamplingParams(**kwargs)
 
 
 def _read_logprob(value: Any) -> float:
@@ -261,6 +312,19 @@ def _extract_logprob_map(generation: Any) -> Dict[int, Any] | None:
     return None
 
 
+def _lookup_logprob(logprob_map: Dict[Any, Any], token_id: int) -> Any:
+    """兼容 int key、数字字符串 key 和对象 key 的 vLLM logprob map。"""
+    if token_id in logprob_map:
+        return logprob_map[token_id]
+    text_key = str(token_id)
+    if text_key in logprob_map:
+        return logprob_map[text_key]
+    for key, value in logprob_map.items():
+        if str(key) == text_key:
+            return value
+    return None
+
+
 def extract_binary_probs_from_output(output: Any, real_token_id: int, fake_token_id: int) -> Dict[str, float | str]:
     """
     函数功能：
@@ -279,11 +343,13 @@ def extract_binary_probs_from_output(output: Any, real_token_id: int, fake_token
             "Set --logprobs to a non-zero value (e.g., -1) to enable logprob outputs."
         )
 
-    if real_token_id not in logprob_map or fake_token_id not in logprob_map:
+    real_value = _lookup_logprob(logprob_map, real_token_id)
+    fake_value = _lookup_logprob(logprob_map, fake_token_id)
+    if real_value is None or fake_value is None:
         raise ValueError("vLLM output is missing requested token logprobs")
 
-    real_logprob = _read_logprob(logprob_map.get(real_token_id))
-    fake_logprob = _read_logprob(logprob_map.get(fake_token_id))
+    real_logprob = _read_logprob(real_value)
+    fake_logprob = _read_logprob(fake_value)
     return pair_softmax(real_logit=real_logprob, fake_logit=fake_logprob)
 
 

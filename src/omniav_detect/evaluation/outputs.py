@@ -96,6 +96,7 @@ def build_run_config(args: argparse.Namespace, num_samples: int) -> Dict[str, An
     return {
         "model_path": args.model_path,
         "adapter_path": args.adapter_path,
+        "model_mode": "lora" if args.adapter_path else "base",
         "jsonl": args.jsonl,
         "num_requested_samples": num_samples,
         "max_samples": args.max_samples,

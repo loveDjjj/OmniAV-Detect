@@ -153,7 +153,7 @@ def resolve_run(config: Dict[str, Any], run: Dict[str, Any], overrides: Dict[str
     if not resolved.get("output_dir"):
         resolved["output_dir"] = join_output_dir(str(output_root), str(resolved.get("name", "unnamed_run")))
 
-    missing = [key for key in ["name", "model_path", "adapter_path", "jsonl", "output_dir"] if not resolved.get(key)]
+    missing = [key for key in ["name", "model_path", "jsonl", "output_dir"] if not resolved.get(key)]
     if missing:
         raise ValueError(f"Run config is missing required fields {missing}: {run}")
     return resolved
@@ -186,8 +186,6 @@ def build_eval_command(run: Dict[str, Any], python_executable: str, eval_script:
         str(eval_script),
         "--model_path",
         str(run["model_path"]),
-        "--adapter_path",
-        str(run["adapter_path"]),
         "--jsonl",
         str(run["jsonl"]),
         "--output_dir",
@@ -207,6 +205,8 @@ def build_eval_command(run: Dict[str, Any], python_executable: str, eval_script:
         "--save_every",
         str(run.get("save_every", 100)),
     ]
+    if run.get("adapter_path"):
+        command.extend(["--adapter_path", str(run["adapter_path"])])
     if run.get("max_samples") is not None:
         command.extend(["--max_samples", str(run["max_samples"])])
     command.append("--use_audio_in_video" if run.get("use_audio_in_video", True) else "--no_use_audio_in_video")

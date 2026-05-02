@@ -111,6 +111,56 @@ class EvalBatchBinaryQwenOmniTests(unittest.TestCase):
         self.assertIn("--max_samples", command)
         self.assertIn("50", command)
 
+    def test_build_eval_command_omits_adapter_flag_for_base_model_eval(self):
+        run = {
+            "name": "base_model_eval",
+            "model_path": "/models/qwen",
+            "adapter_path": None,
+            "jsonl": "/data/fakeavceleb_eval.jsonl",
+            "output_dir": "/tmp/out/base_model_eval",
+            "batch_size": 1,
+            "fps": 1.0,
+            "torch_dtype": "bfloat16",
+            "device_map": "auto",
+            "use_audio_in_video": True,
+            "save_every": 20,
+        }
+
+        command = self.batch_module.build_eval_command(
+            run,
+            python_executable="python",
+            eval_script=Path("scripts/eval_binary_logits_qwen_omni.py"),
+        )
+
+        self.assertNotIn("--adapter_path", command)
+
+    def test_resolve_run_allows_missing_adapter_for_base_model_eval(self):
+        config = {
+            "model_path": "/models/qwen",
+            "output_root": "/tmp/batch_eval",
+            "defaults": {
+                "batch_size": 1,
+                "fps": 1.0,
+                "torch_dtype": "bfloat16",
+                "device_map": "auto",
+                "use_audio_in_video": True,
+                "save_every": 100,
+            },
+            "runs": [
+                {
+                    "name": "base_model_eval",
+                    "adapter_path": None,
+                    "jsonl": "/data/fakeavceleb_eval.jsonl",
+                    "dataset": "FakeAVCeleb",
+                }
+            ],
+        }
+
+        resolved = self.batch_module.resolve_run(config, config["runs"][0], overrides={})
+
+        self.assertIsNone(resolved["adapter_path"])
+        self.assertEqual(resolved["model_path"], "/models/qwen")
+
     def test_default_eval_script_points_to_script_entry(self):
         path = self.batch_module.default_eval_script()
 
