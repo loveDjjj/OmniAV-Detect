@@ -20,7 +20,7 @@ export PYTHONWARNINGS="ignore:PySoundFile failed:UserWarning,ignore:librosa.core
 
 MODEL_PATH="${MODEL_PATH:-/data/OneDay/models/qwen/Qwen2.5-Omni-7B}"
 DATASET_PATH="${DATASET_PATH:-/data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_train.jsonl}"
-STAGE1_OUTPUT_DIR="${STAGE1_OUTPUT_DIR:-/data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_binary_lora_audio_in_video}"
+STAGE1_OUTPUT_DIR="${STAGE1_OUTPUT_DIR:-/data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_binary_audio_in_video/checkpoint-472}"
 MERGED_MODEL_DIR="${MERGED_MODEL_DIR:-/data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_fakeavceleb_merged}"
 STAGE2_OUTPUT_DIR="${STAGE2_OUTPUT_DIR:-/data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_fakeavceleb_encoder_full}"
 

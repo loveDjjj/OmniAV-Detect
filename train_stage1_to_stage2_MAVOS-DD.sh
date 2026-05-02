@@ -26,7 +26,7 @@ export ACCELERATE_USE_DEEPSPEED=false
 
 MODEL_PATH="${MODEL_PATH:-/data/OneDay/models/qwen/Qwen2.5-Omni-7B}"
 DATASET_PATH="${DATASET_PATH:-/data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_train.jsonl}"
-STAGE1_OUTPUT_DIR="${STAGE1_OUTPUT_DIR:-/data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_mavosdd_binary_audio_in_video}"
+STAGE1_OUTPUT_DIR="${STAGE1_OUTPUT_DIR:-/data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_mavosdd_binary_audio_in_video/checkpoint-668}"
 MERGED_MODEL_DIR="${MERGED_MODEL_DIR:-/data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_mavosdd_merged}"
 STAGE2_OUTPUT_DIR="${STAGE2_OUTPUT_DIR:-/data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_mavosdd_encoder_full}"
 

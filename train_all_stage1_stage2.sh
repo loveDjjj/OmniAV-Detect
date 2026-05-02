@@ -4,7 +4,7 @@
 # - 顺序执行两个数据集的 stage1 -> stage2 训练脚本；
 # - 将每个任务的标准输出与错误输出分别写入 logs/。
 
-set -euo pipefail
+
 
 mkdir -p logs
 
