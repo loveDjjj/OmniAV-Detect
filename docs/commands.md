@@ -159,6 +159,16 @@ python scripts/eval_batch_binary_qwen_omni_vllm.py \
 
 ### vLLM 批量正式评估
 
+环境配置：
+```bash
+export VLLM_CU13_LIB=$CONDA_PREFIX/lib/python3.11/site-packages/nvidia/cu13/lib
+export LD_LIBRARY_PATH=$VLLM_CU13_LIB:$LD_LIBRARY_PATH
+```
+测试：
+```bash
+python -c "from vllm import LLM; print('vLLM import OK')"
+```
+
 用途：按 YAML 配置批量执行 vLLM 评估。
 
 ```bash

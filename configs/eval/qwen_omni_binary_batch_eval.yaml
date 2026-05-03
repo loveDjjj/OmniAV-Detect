@@ -5,7 +5,7 @@ eval_backend: parallel  # 使用并行评估后端
 defaults:
   torch_dtype: bfloat16  # 模型加载 dtype
   device_map: auto  # transformers/accelerate 设备映射
-  batch_size: 1  # 评估 batch size，显存不足时保持 1
+  batch_size: 16  # 评估 batch size，显存不足时保持 1
   fps: 4.0  # 视频采样 fps
   save_every: 100  # 每多少条样本保存一次中间预测
   fake_token_id: 52317  # Qwen tokenizer 中 Fake token id
@@ -16,23 +16,8 @@ defaults:
   num_workers: 2  # 并行评估 worker 数
 
 runs:
-  - name: stage1_to_stage2_mavosdd_encoder_full__mavosdd_test_all
-    dataset: MAVOS-DD
-    model_path: /data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_mavosdd_encoder_full/v0-20260503-074431/checkpoint-668  # Full checkpoint
+  - name: stage1_to_stage2_fakeavceleb_encoder_full
+    dataset: FakeAVCeleb
+    model_path: /data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_fakeavceleb_encoder_full/checkpoint-472  # Full checkpoint
     adapter_path:  # Full checkpoint evaluation, no LoRA adapter
-    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_test_all.jsonl
-
-  - name: stage2_only_fakeavceleb_encoder_full__fakeavceleb_eval
-    dataset: FakeAVCeleb
-    adapter_path: /data/OneDay/OmniAV-Detect/outputs/stage2_only_fakeavceleb_encoder_full/checkpoint-944  # LoRA checkpoint
-    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_eval.jsonl
-
-  - name: stage1_qwen2_5_omni_mavosdd_binary__mavosdd_test_all
-    dataset: MAVOS-DD
-    adapter_path: /data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_mavosdd_binary/checkpoint-668  # LoRA checkpoint
-    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_test_all.jsonl
-
-  - name: stage1_qwen2_5_omni_fakeavceleb_binary__fakeavceleb_eval
-    dataset: FakeAVCeleb
-    adapter_path: /data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_binary/checkpoint-944  # LoRA checkpoint
     jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_eval.jsonl
