@@ -57,10 +57,10 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     - argparse.Namespace，包含模型、adapter、数据、batch 和 vLLM 参数。
     """
     parser = argparse.ArgumentParser(
-        description="Evaluate a Qwen2.5-Omni LoRA binary deepfake detector with vLLM logprobs."
+        description="Evaluate a Qwen2.5-Omni binary deepfake detector with vLLM logprobs."
     )
     parser.add_argument("--model_path", default="/data/OneDay/models/qwen/Qwen2.5-Omni-7B")
-    parser.add_argument("--adapter_path", required=True)
+    parser.add_argument("--adapter_path", default=None, help="Optional LoRA checkpoint path. Omit for full-checkpoint/base-model evaluation.")
     parser.add_argument("--jsonl", required=True)
     parser.add_argument("--output_dir", required=True)
     parser.add_argument("--max_samples", type=int, default=None)

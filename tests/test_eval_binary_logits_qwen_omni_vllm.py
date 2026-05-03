@@ -16,8 +16,6 @@ class EvalBinaryLogitsQwenOmniVllmTests(unittest.TestCase):
     def test_parse_args_defaults(self):
         args = eval_module.parse_args(
             [
-                "--adapter_path",
-                "adapter",
                 "--jsonl",
                 "eval.jsonl",
                 "--output_dir",
@@ -30,6 +28,7 @@ class EvalBinaryLogitsQwenOmniVllmTests(unittest.TestCase):
         self.assertEqual(args.mm_format, "omni_av")
         self.assertEqual(args.temperature, 0.0)
         self.assertEqual(args.logprobs, -1)
+        self.assertIsNone(args.adapter_path)
 
     def test_build_multi_modal_data_default_uses_qwen_omni_audio_video(self):
         conversation = eval_module.build_conversation("/tmp/a.mp4")
