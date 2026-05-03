@@ -168,6 +168,7 @@ def resolve_run(config: Dict[str, Any], run: Dict[str, Any], overrides: Dict[str
 
     resolved.setdefault("batch_size", 1)
     resolved.setdefault("fps", 1.0)
+    resolved.setdefault("env", {})
     resolved.setdefault("torch_dtype", "bfloat16")
     resolved.setdefault("device_map", "auto")
     resolved.setdefault("use_audio_in_video", True)
@@ -301,7 +302,7 @@ def build_eval_command(run: Dict[str, Any], python_executable: str, eval_module:
     raise ValueError(f"Unsupported eval_backend={backend!r}")
 
 
-def build_subprocess_env() -> Dict[str, str]:
+def build_subprocess_env(run: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
     """
     函数功能：
     - 为批量评估子进程补齐 `PYTHONPATH`。
@@ -316,6 +317,11 @@ def build_subprocess_env() -> Dict[str, str]:
     repo_src = str(Path(__file__).resolve().parents[3] / "src")
     current = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = repo_src if not current else f"{repo_src}{os.pathsep}{current}"
+    if run is not None:
+        run_env = run.get("env", {})
+        if run_env:
+            for key, value in run_env.items():
+                env[str(key)] = str(value)
     return env
 
 
@@ -464,7 +470,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     logging.info("Loaded %d batch eval runs from %s", len(runs), args.config)
     progress = create_progress(total=len(runs), desc="Batch eval runs", unit="run")
-    env = build_subprocess_env()
     try:
         for run in runs:
             eval_module = default_eval_module(run.get("eval_backend", "parallel"))
@@ -475,7 +480,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 progress.update(1)
                 continue
 
-            completed = subprocess.run(command, check=False, env=env)
+            completed = subprocess.run(command, check=False, env=build_subprocess_env(run))
             status = "completed" if completed.returncode == 0 else "failed"
             summary_rows.append(build_summary_row(run, returncode=completed.returncode, status=status))
             write_summary(output_root, summary_rows)

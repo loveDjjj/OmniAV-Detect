@@ -25,6 +25,10 @@ runs:
     model_path: /data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_mavosdd_encoder_full/v0-20260503-074431/checkpoint-668  # Full checkpoint
     adapter_path:  # Full checkpoint evaluation, no LoRA adapter
     jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_test_all.jsonl
+    env:
+      FPS_MAX_FRAMES: 64
+      VIDEO_MAX_PIXELS: 25088
+      MAX_PIXELS: 501760
 
   - name: stage2_only_fakeavceleb_encoder_full__fakeavceleb_eval
     dataset: FakeAVCeleb
@@ -35,6 +39,10 @@ runs:
     dataset: MAVOS-DD
     adapter_path: /data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_mavosdd_binary/checkpoint-668  # LoRA checkpoint
     jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_test_all.jsonl
+    env:
+      FPS_MAX_FRAMES: 64
+      VIDEO_MAX_PIXELS: 25088
+      MAX_PIXELS: 501760
 
   - name: stage1_qwen2_5_omni_fakeavceleb_binary__fakeavceleb_eval
     dataset: FakeAVCeleb

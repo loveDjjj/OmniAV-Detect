@@ -5,8 +5,8 @@ eval_backend: parallel  # 使用并行评估后端
 defaults:
   torch_dtype: bfloat16  # 模型加载 dtype
   device_map: auto  # transformers/accelerate 设备映射
-  batch_size: 16  # 评估 batch size，显存不足时保持 1
-  fps: 4.0  # 视频采样 fps
+  batch_size: 1  # 评估 batch size
+  fps: 2.0  # 视频采样 fps
   save_every: 100  # 每多少条样本保存一次中间预测
   fake_token_id: 52317  # Qwen tokenizer 中 Fake token id
   real_token_id: 12768  # Qwen tokenizer 中 Real token id
@@ -16,8 +16,48 @@ defaults:
   num_workers: 2  # 并行评估 worker 数
 
 runs:
-  - name: stage1_to_stage2_fakeavceleb_encoder_full
-    dataset: FakeAVCeleb
-    model_path: /data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_fakeavceleb_encoder_full/checkpoint-472  # Full checkpoint
+  #- name: stage1_qwen2_5_omni_fakeavceleb_binary_audio_in_video
+  #  dataset: FakeAVCeleb
+  #  model_path: /data/OneDay/models/qwen/Qwen2.5-Omni-7B   # Full checkpoint
+  #  adapter_path: /data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_binary_audio_in_video/checkpoint-472
+  #  jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_eval.jsonl
+
+  - name: stage1_to_stage2_mavosdd_encoder_full_indomain
+    dataset: MAVOS-DD
+    model_path: /data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_mavosdd_encoder_full/checkpoint-668  # Full checkpoint
     adapter_path:  # Full checkpoint evaluation, no LoRA adapter
-    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb/fakeavceleb_binary_eval.jsonl
+    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_test_indomain.jsonl
+    env:
+      FPS_MAX_FRAMES: 64
+      VIDEO_MAX_PIXELS: 25088
+      MAX_PIXELS: 501760
+  
+  - name: stage1_to_stage2_mavosdd_encoder_full_open_language
+    dataset: MAVOS-DD
+    model_path: /data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_mavosdd_encoder_full/checkpoint-668  # Full checkpoint
+    adapter_path:  # Full checkpoint evaluation, no LoRA adapter
+    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_test_open_language.jsonl
+    env:
+      FPS_MAX_FRAMES: 64
+      VIDEO_MAX_PIXELS: 25088
+      MAX_PIXELS: 501760  
+
+  - name: stage1_to_stage2_mavosdd_encoder_full_open_model
+    dataset: MAVOS-DD
+    model_path: /data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_mavosdd_encoder_full/checkpoint-668  # Full checkpoint
+    adapter_path:  # Full checkpoint evaluation, no LoRA adapter
+    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_test_open_model.jsonl
+    env:
+      FPS_MAX_FRAMES: 64
+      VIDEO_MAX_PIXELS: 25088
+      MAX_PIXELS: 501760
+
+  - name: stage1_to_stage2_mavosdd_encoder_full_open_full
+    dataset: MAVOS-DD
+    model_path: /data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_mavosdd_encoder_full/checkpoint-668  # Full checkpoint
+    adapter_path:  # Full checkpoint evaluation, no LoRA adapter
+    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/mavosdd/mavosdd_binary_test_open_full.jsonl
+    env:
+      FPS_MAX_FRAMES: 64
+      VIDEO_MAX_PIXELS: 25088
+      MAX_PIXELS: 501760

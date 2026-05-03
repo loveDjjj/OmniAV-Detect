@@ -89,6 +89,23 @@ class EvalBatchBinaryQwenOmniTests(unittest.TestCase):
         self.assertEqual(resolved["batch_size"], 1)
         self.assertEqual(resolved["output_dir"], "/tmp/batch_eval/fakeavceleb_stage1")
         self.assertEqual(resolved["dataset"], "FakeAVCeleb")
+        self.assertEqual(resolved["env"], {})
+
+    def test_build_subprocess_env_merges_run_env(self):
+        env = self.batch_module.build_subprocess_env(
+            {
+                "env": {
+                    "FPS_MAX_FRAMES": 64,
+                    "VIDEO_MAX_PIXELS": 25088,
+                    "MAX_PIXELS": 501760,
+                }
+            }
+        )
+
+        self.assertIn("PYTHONPATH", env)
+        self.assertEqual(env["FPS_MAX_FRAMES"], "64")
+        self.assertEqual(env["VIDEO_MAX_PIXELS"], "25088")
+        self.assertEqual(env["MAX_PIXELS"], "501760")
 
     def test_build_eval_command_includes_batch_and_audio_flags(self):
         run = {
