@@ -1,19 +1,23 @@
 model_path: /data/OneDay/models/qwen/Qwen2.5-Omni-7B  # Qwen2.5-Omni 基座模型路径
-output_root: /data/OneDay/OmniAV-Detect/outputs/batch_eval_binary  # 批量评估汇总输出根目录
-eval_backend: parallel  # 使用并行评估后端
+output_root: /data/OneDay/OmniAV-Detect/outputs/batch_eval_binary_vllm  # vLLM 批量评估输出根目录
+eval_backend: vllm  # 使用 vLLM 后端
 
 defaults:
-  torch_dtype: bfloat16  # 模型加载 dtype
-  device_map: auto  # transformers/accelerate 设备映射
-  batch_size: 1  # 评估 batch size，显存不足时保持 1
-  fps: 4.0  # 视频采样 fps
+  torch_dtype: bfloat16  # vLLM dtype
+  batch_size: 1  # vLLM 每批样本数
+  fps: 1.0  # 日志中的视频采样 fps
   save_every: 100  # 每多少条样本保存一次中间预测
   fake_token_id: 52317  # Qwen tokenizer 中 Fake token id
   real_token_id: 12768  # Qwen tokenizer 中 Real token id
-  use_audio_in_video: true  # 是否在视频输入中启用音频
+  use_audio_in_video: true  # 是否启用视频内音频
   max_samples:  # 小样本调试时填写整数，留空表示全量
-  gpus: 0,1  # 并行评估时使用的 GPU 列表
-  num_workers: 2  # 并行评估 worker 数，通常与 GPU 数一致
+  tensor_parallel_size: 2  # 2 卡服务器默认用 2 路张量并行
+  gpu_memory_utilization: 0.9  # vLLM 显存占用比例
+  trust_remote_code: true  # 按 Qwen2.5-Omni 官方方式加载
+  mm_format: omni_av  # 使用 qwen_omni_utils 构造 audio-video 输入
+  temperature: 0.0  # logits 评估保持贪心
+  top_p: 1.0  # logits 评估保持全概率
+  logprobs: -1  # 返回完整词表 logprobs，提取 Real/Fake
 
 runs:
   - name: stage2_only_fakeavceleb_encoder_full__fakeavceleb_eval

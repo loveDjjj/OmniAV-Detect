@@ -1,16 +1,16 @@
-#!/usr/bin/env python3
 """
 本文件功能：
-- 负责 Qwen2.5-Omni binary logits 评估的外层多进程调度。
+- 负责 Qwen2.5-Omni binary logits 评估的并行调度。
 
 主要内容：
-- split_jsonl_to_shards：把评估 JSONL 按 round-robin 切成多个 shard。
-- build_worker_command / run_workers：按 GPU 启动多个单 checkpoint 评估子进程。
-- write_merged_outputs：合并各 shard 的预测与失败样本，并重新计算指标。
-- main：并行评估命令行入口。
+- split_jsonl_to_shards：将输入 JSONL 按 round-robin 切成多个 shard。
+- build_worker_command：构造单个 worker 的内部评估命令。
+- run_workers：按 GPU 启动多个 worker 子进程，并按完成数显示进度。
+- write_merged_outputs：合并各 worker 的预测结果并重算整体指标。
+- main：并行评估命令行主流程。
 
 使用方式：
-- 通常通过 `python scripts/eval_parallel_binary_qwen_omni.py ...` 调用。
+- 仅供内部通过 `python -m omniav_detect.evaluation.parallel_cli ...` 调用。
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from omniav_detect.evaluation.data_io import write_json
 from omniav_detect.evaluation.outputs import print_core_metrics, save_outputs
+from omniav_detect.evaluation.progress import create_progress
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -35,8 +36,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     函数功能：
     - 解析并行评估命令行参数。
 
+    参数：
+    - argv: 可选命令行参数列表；为 None 时读取真实命令行。
+
     返回：
     - argparse.Namespace，包含模型、数据、GPU、worker 和输出参数。
+
+    关键逻辑：
+    - 每个 worker 只暴露一张 GPU；真正的单 worker 评估由内部模块入口负责。
     """
     parser = argparse.ArgumentParser(
         description="Parallel shard runner for Qwen2.5-Omni binary logits evaluation."
@@ -45,7 +52,6 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--adapter_path", default=None, help="Optional LoRA checkpoint path. Omit for base-model evaluation.")
     parser.add_argument("--jsonl", required=True)
     parser.add_argument("--output_dir", required=True)
-    parser.add_argument("--eval_script", default=None)
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--gpus", default=None, help="Comma separated GPU ids, e.g. 0,1. Defaults to CUDA_VISIBLE_DEVICES.")
     parser.add_argument("--num_workers", type=int, default=None, help="Number of GPU worker processes.")
@@ -81,15 +87,33 @@ def setup_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s", datefmt="%H:%M:%S")
 
 
-def default_eval_script() -> Path:
-    """返回仓库内 Transformers 单模型评估脚本路径。"""
-    return Path(__file__).resolve().parents[3] / "scripts" / "eval_binary_logits_qwen_omni.py"
+def default_eval_module() -> str:
+    """
+    函数功能：
+    - 返回 Transformers 单 worker 评估使用的内部模块入口。
+
+    返回：
+    - Python `-m` 调用所需模块名。
+
+    关键逻辑：
+    - 并行 worker 不再依赖 `scripts/` 目录中的单模型脚本。
+    """
+    return "omniav_detect.evaluation.worker_cli"
 
 
 def parse_gpu_list(gpus: Optional[str]) -> List[str]:
     """
     函数功能：
     - 解析命令行或环境变量中的 GPU id 列表。
+
+    参数：
+    - gpus: 显式传入的 GPU 字符串，例如 `0,1`。
+
+    返回：
+    - GPU id 列表。
+
+    关键逻辑：
+    - 如果命令行没有显式传值，则回退到 `CUDA_VISIBLE_DEVICES`。
     """
     raw = gpus if gpus is not None else os.environ.get("CUDA_VISIBLE_DEVICES")
     if raw:
@@ -102,11 +126,17 @@ def parse_gpu_list(gpus: Optional[str]) -> List[str]:
 def resolve_worker_gpus(gpus: Optional[str], num_workers: Optional[int]) -> List[str]:
     """
     函数功能：
-    - 根据 GPU 列表和 num_workers 计算实际 worker 使用的 GPU。
+    - 根据 GPU 列表和 worker 数量，确定实际参与评估的 GPU。
+
+    参数：
+    - gpus: GPU 字符串。
+    - num_workers: 需要启动的 worker 数。
+
+    返回：
+    - 按顺序分配给 worker 的 GPU 列表。
 
     关键逻辑：
-    - 每个 worker 只暴露一张 GPU，通过 `CUDA_VISIBLE_DEVICES=<gpu>` 避免 `device_map=auto`
-      把单个样本切到多卡上。
+    - 每个 worker 仅绑定一张卡，避免 `device_map=auto` 把单样本切到多卡。
     """
     parsed = parse_gpu_list(gpus)
     if num_workers is None:
@@ -119,7 +149,17 @@ def resolve_worker_gpus(gpus: Optional[str], num_workers: Optional[int]) -> List
 
 
 def iter_jsonl_lines(jsonl_path: Path, max_samples: Optional[int]) -> Iterable[str]:
-    """读取 JSONL 非空行，并按 max_samples 截断。"""
+    """
+    函数功能：
+    - 按行读取非空 JSONL 样本，并按需截断。
+
+    参数：
+    - jsonl_path: 输入 JSONL 文件路径。
+    - max_samples: 最大样本数；为 None 时读取全部。
+
+    返回：
+    - 逐行文本迭代器。
+    """
     count = 0
     with jsonl_path.open("r", encoding="utf-8") as handle:
         for line in handle:
@@ -140,6 +180,15 @@ def split_jsonl_to_shards(
     """
     函数功能：
     - 将输入 JSONL 切成多个 shard 文件。
+
+    参数：
+    - jsonl_path: 输入 JSONL 路径。
+    - shard_dir: shard 输出目录。
+    - num_shards: shard 数量。
+    - max_samples: 最多切分的样本数。
+
+    返回：
+    - shard 路径列表。
 
     关键逻辑：
     - 使用 round-robin 分配样本，避免原始 JSONL 按类别排序时某个 worker 只拿到单一类别。
@@ -162,7 +211,7 @@ def split_jsonl_to_shards(
 
 def build_worker_command(
     python_executable: str,
-    eval_script: Path,
+    eval_module: str,
     model_path: str,
     adapter_path: Optional[str],
     shard_jsonl: Path,
@@ -179,11 +228,32 @@ def build_worker_command(
 ) -> List[str]:
     """
     函数功能：
-    - 构造单个 worker 的单模型评估命令。
+    - 构造单个 worker 的内部评估命令。
+
+    参数：
+    - python_executable: Python 解释器路径。
+    - eval_module: 内部 worker 模块名。
+    - model_path: 基座模型路径。
+    - adapter_path: 可选 LoRA 路径。
+    - shard_jsonl: 当前 worker 负责的 shard 文件。
+    - shard_output_dir: 当前 worker 输出目录。
+    - batch_size: 评估 batch size。
+    - fps: 视频采样帧率。
+    - save_every: 中间保存频率。
+    - torch_dtype: 模型精度。
+    - device_map: 设备映射参数。
+    - fake_token_id: Fake token id。
+    - real_token_id: Real token id。
+    - use_audio_in_video: 是否启用视频内音频。
+    - extra_args: 额外透传参数。
+
+    返回：
+    - `subprocess` 可直接使用的命令列表。
     """
     command = [
         python_executable,
-        str(eval_script),
+        "-m",
+        str(eval_module),
         "--model_path",
         model_path,
         "--jsonl",
@@ -213,7 +283,16 @@ def build_worker_command(
 
 
 def read_jsonl(path: Path) -> List[Dict[str, Any]]:
-    """读取 JSONL 文件；不存在时返回空列表。"""
+    """
+    函数功能：
+    - 读取 JSONL 文件。
+
+    参数：
+    - path: JSONL 路径。
+
+    返回：
+    - 解析后的字典列表；文件不存在时返回空列表。
+    """
     if not path.exists():
         return []
     rows = []
@@ -227,7 +306,13 @@ def read_jsonl(path: Path) -> List[Dict[str, Any]]:
 def collect_worker_outputs(worker_dirs: Sequence[Path]) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     函数功能：
-    - 汇总所有 worker 的 predictions.jsonl 和 bad_samples.jsonl。
+    - 汇总所有 worker 的 predictions 和 bad samples。
+
+    参数：
+    - worker_dirs: 各 worker 输出目录。
+
+    返回：
+    - `(predictions, bad_samples)` 二元组。
     """
     predictions: List[Dict[str, Any]] = []
     bad_samples: List[Dict[str, Any]] = []
@@ -246,6 +331,11 @@ def write_merged_outputs(output_dir: Path | str, worker_dirs: Sequence[Path], ru
     函数功能：
     - 合并 worker 输出，并重新计算整体二分类指标。
 
+    参数：
+    - output_dir: 合并后的总输出目录。
+    - worker_dirs: 各 worker 输出目录。
+    - run_config: 记录到 metrics 的运行配置。
+
     返回：
     - 合并后的 metrics 字典。
     """
@@ -255,7 +345,18 @@ def write_merged_outputs(output_dir: Path | str, worker_dirs: Sequence[Path], ru
 
 
 def build_run_config(args: argparse.Namespace, worker_gpus: Sequence[str], worker_dirs: Sequence[Path]) -> Dict[str, Any]:
-    """保存并行评估运行参数，写入最终 metrics.json。"""
+    """
+    函数功能：
+    - 整理并行评估运行配置，写入最终 `metrics.json`。
+
+    参数：
+    - args: 命令行参数。
+    - worker_gpus: 实际使用的 GPU 列表。
+    - worker_dirs: worker 输出目录列表。
+
+    返回：
+    - 运行配置字典。
+    """
     return {
         "backend": "transformers_parallel",
         "model_path": args.model_path,
@@ -287,11 +388,27 @@ def run_workers(
     """
     函数功能：
     - 并发启动所有 worker 子进程，并等待结束。
+
+    参数：
+    - commands: 每个 worker 的启动命令。
+    - worker_gpus: 每个 worker 绑定的 GPU。
+    - output_dir: 并行评估总输出目录。
+    - dry_run: 为 True 时只打印命令不启动进程。
+
+    返回：
+    - 每个 worker 的返回码列表。
+
+    关键逻辑：
+    - 每个 worker 的 stdout/stderr 写入独立日志文件。
+    - 进度条按 worker 完成数更新。
     """
     processes: List[tuple[int, subprocess.Popen[Any], Any]] = []
+    repo_src = str(Path(__file__).resolve().parents[3] / "src")
     for idx, (command, gpu) in enumerate(zip(commands, worker_gpus)):
         env = os.environ.copy()
         env["CUDA_VISIBLE_DEVICES"] = str(gpu)
+        current_pythonpath = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = repo_src if not current_pythonpath else f"{repo_src}{os.pathsep}{current_pythonpath}"
         log_path = output_dir / f"worker_{idx:03d}.log"
         logging.info("Worker %d on GPU %s: %s", idx, gpu, shlex.join(command))
         if dry_run:
@@ -304,18 +421,26 @@ def run_workers(
         return [0 for _ in commands]
 
     returncodes = []
-    for idx, process, log_handle in processes:
-        try:
-            returncode = process.wait()
-            logging.info("Worker %d finished with returncode=%d", idx, returncode)
-            returncodes.append(returncode)
-        finally:
-            log_handle.close()
+    progress = create_progress(total=len(processes), desc="Parallel eval workers", unit="worker")
+    try:
+        for idx, process, log_handle in processes:
+            try:
+                returncode = process.wait()
+                logging.info("Worker %d finished with returncode=%d", idx, returncode)
+                returncodes.append(returncode)
+                progress.update(1)
+            finally:
+                log_handle.close()
+    finally:
+        progress.close()
     return returncodes
 
 
 def write_parallel_manifest(output_dir: Path, commands: Sequence[List[str]], worker_gpus: Sequence[str]) -> None:
-    """写出 worker 命令清单，便于复现与排查。"""
+    """
+    函数功能：
+    - 写出 worker 命令清单，便于复现和排查。
+    """
     rows = [
         {"worker": idx, "gpu": gpu, "command": command}
         for idx, (gpu, command) in enumerate(zip(worker_gpus, commands))
@@ -328,8 +453,12 @@ def cleanup_shards(shard_dir: Path, output_dir: Path) -> None:
     函数功能：
     - 安全删除并行评估生成的临时 JSONL shard 目录。
 
+    参数：
+    - shard_dir: 待删除 shard 目录。
+    - output_dir: 并行评估总输出目录。
+
     关键逻辑：
-    - 只允许删除 output_dir 内的 shard_dir，避免误删用户数据。
+    - 只允许删除 output_dir 内部的 shard 目录，避免误删用户数据。
     """
     if not shard_dir.exists():
         return
@@ -343,7 +472,16 @@ def cleanup_shards(shard_dir: Path, output_dir: Path) -> None:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """
     函数功能：
-    - 并行评估 CLI 主流程。
+    - 并行评估命令行主流程。
+
+    参数：
+    - argv: 可选命令行参数列表；为 None 时读取真实命令行。
+
+    返回：
+    - 评估进程退出码。
+
+    关键逻辑：
+    - 先切分 JSONL，再为每张 GPU 启动一个内部 worker，最后合并所有结果并重算指标。
     """
     args = parse_args(argv)
     setup_logging()
@@ -354,7 +492,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     worker_root.mkdir(parents=True, exist_ok=True)
 
     worker_gpus = resolve_worker_gpus(args.gpus, args.num_workers)
-    eval_script = Path(args.eval_script) if args.eval_script else default_eval_script()
+    eval_module = default_eval_module()
     shard_paths = split_jsonl_to_shards(args.jsonl, shard_dir, len(worker_gpus), args.max_samples)
     worker_dirs = [worker_root / f"worker_{idx:03d}" for idx in range(len(worker_gpus))]
     for worker_dir in worker_dirs:
@@ -364,7 +502,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     commands = [
         build_worker_command(
             python_executable=args.python,
-            eval_script=eval_script,
+            eval_module=eval_module,
             model_path=args.model_path,
             adapter_path=args.adapter_path,
             shard_jsonl=shard_path,

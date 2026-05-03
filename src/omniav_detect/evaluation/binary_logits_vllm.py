@@ -39,6 +39,7 @@ from omniav_detect.evaluation.outputs import (  # noqa: F401
     print_core_metrics,
     save_outputs,
 )
+from omniav_detect.evaluation.progress import count_batches, create_progress
 from omniav_detect.evaluation.vllm_runtime import *  # noqa: F401,F403
 from omniav_detect.evaluation.vllm_runtime import evaluate_batch, evaluate_sample, load_vllm_engine
 from omniav_detect.evaluation.visualization import write_eval_visualizations  # noqa: F401
@@ -187,36 +188,41 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     bad_samples = []
     processed = 0
     next_save = args.save_every if args.save_every > 0 else None
+    progress = create_progress(count_batches(len(samples), args.batch_size), desc="Evaluating(vLLM)", unit="batch")
 
-    for batch in batch_samples(samples, args.batch_size):
-        try:
-            predictions.extend(evaluate_batch(llm, tokenizer, lora_request, batch, args))
-        except Exception as batch_exc:  # noqa: BLE001 - retry per sample to isolate broken media.
-            if len(batch) > 1:
-                logging.warning(
-                    "Batch starting at sample %s failed with %s; retrying sample by sample.",
-                    batch[0].get("index"),
-                    batch_exc,
+    try:
+        for batch in batch_samples(samples, args.batch_size):
+            try:
+                predictions.extend(evaluate_batch(llm, tokenizer, lora_request, batch, args))
+            except Exception as batch_exc:  # noqa: BLE001 - retry per sample to isolate broken media.
+                if len(batch) > 1:
+                    logging.warning(
+                        "Batch starting at sample %s failed with %s; retrying sample by sample.",
+                        batch[0].get("index"),
+                        batch_exc,
+                    )
+                for sample in batch:
+                    try:
+                        predictions.append(evaluate_sample(llm, tokenizer, lora_request, sample, args))
+                    except Exception as exc:  # noqa: BLE001 - continue evaluation after per-sample failures.
+                        bad_samples.append(make_bad_sample(sample, exc))
+                        logging.exception("Failed sample %s (%s)", sample.get("index"), sample.get("video_path"))
+
+            processed += len(batch)
+            progress.update(1)
+            if next_save is not None and processed >= next_save:
+                save_outputs(output_dir, predictions, bad_samples, run_config)
+                logging.info(
+                    "Saved checkpoint after %d/%d samples: %d predictions, %d bad samples",
+                    processed,
+                    len(samples),
+                    len(predictions),
+                    len(bad_samples),
                 )
-            for sample in batch:
-                try:
-                    predictions.append(evaluate_sample(llm, tokenizer, lora_request, sample, args))
-                except Exception as exc:  # noqa: BLE001 - continue evaluation after per-sample failures.
-                    bad_samples.append(make_bad_sample(sample, exc))
-                    logging.exception("Failed sample %s (%s)", sample.get("index"), sample.get("video_path"))
-
-        processed += len(batch)
-        if next_save is not None and processed >= next_save:
-            save_outputs(output_dir, predictions, bad_samples, run_config)
-            logging.info(
-                "Saved checkpoint after %d/%d samples: %d predictions, %d bad samples",
-                processed,
-                len(samples),
-                len(predictions),
-                len(bad_samples),
-            )
-            while next_save is not None and next_save <= processed:
-                next_save += args.save_every
+                while next_save is not None and next_save <= processed:
+                    next_save += args.save_every
+    finally:
+        progress.close()
 
     metrics = save_outputs(output_dir, predictions, bad_samples, run_config)
     logging.info("Wrote predictions.jsonl, bad_samples.jsonl, metrics.json, and visualizations to %s", output_dir)

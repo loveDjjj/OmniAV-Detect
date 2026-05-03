@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import math
 import sys
@@ -8,54 +7,38 @@ import uuid
 from pathlib import Path
 
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
+SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
-
-def load_eval_module():
-    script_path = SCRIPTS_DIR / "eval_binary_logits_qwen_omni.py"
-    spec = importlib.util.spec_from_file_location("eval_binary_logits_qwen_omni", script_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from omniav_detect.evaluation import binary_logits as eval_module
 
 
 class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
-    def setUp(self):
-        self.eval_module = load_eval_module()
-
     def test_build_conversation_uses_expected_qwen_omni_prompt(self):
         video_path = str(Path("clip.mp4").resolve())
 
-        conversation = self.eval_module.build_conversation(video_path)
+        conversation = eval_module.build_conversation(video_path)
 
         self.assertEqual(conversation[0]["role"], "system")
-        self.assertEqual(conversation[0]["content"][0]["text"], self.eval_module.SYSTEM_PROMPT)
+        self.assertEqual(conversation[0]["content"][0]["text"], eval_module.SYSTEM_PROMPT)
         self.assertEqual(conversation[1]["role"], "user")
         self.assertEqual(conversation[1]["content"][0], {"type": "video", "video": video_path})
-        self.assertEqual(conversation[1]["content"][1]["text"], self.eval_module.USER_PROMPT_AFTER_VIDEO)
+        self.assertEqual(conversation[1]["content"][1]["text"], eval_module.USER_PROMPT_AFTER_VIDEO)
         self.assertEqual(
-            self.eval_module.USER_PROMPT,
+            eval_module.USER_PROMPT,
             "<video>\nGiven the video, please assess if it's Real or Fake? Only answer Real or Fake.",
         )
 
     def test_pair_softmax_predicts_fake_when_fake_probability_is_higher(self):
-        result = self.eval_module.pair_softmax(real_logit=1.0, fake_logit=3.0)
+        result = eval_module.pair_softmax(real_logit=1.0, fake_logit=3.0)
 
         self.assertEqual(result["pred"], "Fake")
         self.assertGreater(result["p_fake"], result["p_real"])
         self.assertTrue(math.isclose(result["p_fake"] + result["p_real"], 1.0, rel_tol=1e-9))
 
     def test_parse_args_defaults_to_single_sample_batches(self):
-        args = self.eval_module.parse_args(
-            [
-                "--jsonl",
-                "eval.jsonl",
-                "--output_dir",
-                "out",
-            ]
-        )
+        args = eval_module.parse_args(["--jsonl", "eval.jsonl", "--output_dir", "out"])
 
         self.assertEqual(args.batch_size, 1)
         self.assertTrue(args.use_audio_in_video)
@@ -102,7 +85,7 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
         sys.modules["transformers"] = fake_transformers
         try:
             args = types.SimpleNamespace(model_path="/model", adapter_path=None, torch_dtype="bfloat16", device_map="auto")
-            model, processor = self.eval_module.load_model_and_processor(args)
+            model, processor = eval_module.load_model_and_processor(args)
         finally:
             if old_torch is None:
                 sys.modules.pop("torch", None)
@@ -126,7 +109,7 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
     def test_batch_samples_groups_samples_without_dropping_tail(self):
         samples = [{"index": idx} for idx in range(5)]
 
-        batches = list(self.eval_module.batch_samples(samples, batch_size=2))
+        batches = list(eval_module.batch_samples(samples, batch_size=2))
 
         self.assertEqual([[item["index"] for item in batch] for batch in batches], [[0, 1], [2, 3], [4]])
 
@@ -149,7 +132,7 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
         wrapped = WrappedModel()
         wrapped.base_model = base
 
-        self.assertIs(self.eval_module.resolve_forward_model(wrapped), thinker)
+        self.assertIs(eval_module.resolve_forward_model(wrapped), thinker)
 
     def test_prepare_inputs_prefers_qwen_omni_utils_decoder_path(self):
         calls = []
@@ -173,9 +156,9 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
         old_module = sys.modules.get("qwen_omni_utils")
         sys.modules["qwen_omni_utils"] = fake_module
         try:
-            inputs = self.eval_module.prepare_inputs(
+            inputs = eval_module.prepare_inputs(
                 FakeProcessor(),
-                self.eval_module.build_conversation("/tmp/a.mp4"),
+                eval_module.build_conversation("/tmp/a.mp4"),
                 device=None,
                 use_audio_in_video=True,
                 fps=1.0,
@@ -209,7 +192,7 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
         ]
         jsonl_path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
 
-        samples = self.eval_module.load_jsonl_samples(jsonl_path, max_samples=1)
+        samples = eval_module.load_jsonl_samples(jsonl_path, max_samples=1)
 
         self.assertEqual(len(samples), 1)
         self.assertEqual(samples[0]["label"], "Real")
@@ -223,7 +206,7 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
             {"label": "Fake", "pred": "Real", "p_fake": 0.4},
         ]
 
-        metrics = self.eval_module.compute_metrics(predictions)
+        metrics = eval_module.compute_metrics(predictions)
 
         self.assertTrue(math.isclose(metrics["accuracy"], 2 / 3, rel_tol=1e-9))
         self.assertEqual(metrics["label_distribution"], {"Real": 1, "Fake": 2})
@@ -245,7 +228,7 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
             {"label": "Fake", "pred": "Real", "p_fake": 0.4, "p_real": 0.6},
         ]
 
-        metrics = self.eval_module.save_outputs(output_dir, predictions, [], {"run": "test"})
+        metrics = eval_module.save_outputs(output_dir, predictions, [], {"run": "test"})
 
         visual_dir = output_dir / "visualizations"
         self.assertEqual(metrics["visualizations_dir"], str(visual_dir))

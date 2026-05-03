@@ -46,7 +46,7 @@ class EvalParallelBinaryQwenOmniTests(unittest.TestCase):
     def test_build_worker_command_includes_single_gpu_shard_settings(self):
         command = build_worker_command(
             python_executable="python",
-            eval_script=Path("scripts/eval_binary_logits_qwen_omni.py"),
+            eval_module="omniav_detect.evaluation.worker_cli",
             model_path="/model",
             adapter_path="/adapter",
             shard_jsonl=Path("/tmp/shard.jsonl"),
@@ -62,6 +62,7 @@ class EvalParallelBinaryQwenOmniTests(unittest.TestCase):
             extra_args=[],
         )
 
+        self.assertEqual(command[:3], ["python", "-m", "omniav_detect.evaluation.worker_cli"])
         self.assertIn("--jsonl", command)
         self.assertIn(str(Path("/tmp/shard.jsonl")), command)
         self.assertIn("--batch_size", command)
@@ -71,7 +72,7 @@ class EvalParallelBinaryQwenOmniTests(unittest.TestCase):
     def test_build_worker_command_omits_adapter_flag_for_base_model_eval(self):
         command = build_worker_command(
             python_executable="python",
-            eval_script=Path("scripts/eval_binary_logits_qwen_omni.py"),
+            eval_module="omniav_detect.evaluation.worker_cli",
             model_path="/model",
             adapter_path=None,
             shard_jsonl=Path("/tmp/shard.jsonl"),

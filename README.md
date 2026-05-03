@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-OmniAV-Detect 面向 audio-video deepfake detection，当前支持把 FakeAVCeleb 和 MAVOS-DD 本地数据转换为 ms-swift / Qwen2.5-Omni SFT JSONL，并评估 Qwen2.5-Omni 基模或 LoRA binary detector 的 `Real` / `Fake` token logits。
+OmniAV-Detect 面向 audio-video deepfake detection，当前支持把 FakeAVCeleb 和 MAVOS-DD 本地数据转换为 ms-swift / Qwen2.5-Omni SFT JSONL，并通过两条批量评估路径计算 Qwen2.5-Omni 基模或 LoRA binary detector 的 `Real` / `Fake` token logits：并行评估后端和 vLLM 后端。
 
 ## 项目结构
 
@@ -22,24 +22,21 @@ docs/                         # 命令、架构、记录
 ## 关键文件说明
 
 - `configs/data/swift_av_sft.yaml`：FakeAVCeleb / MAVOS-DD 数据准备路径和默认参数。
-- `configs/eval/qwen_omni_binary_batch_eval.yaml`：三个 Qwen2.5-Omni LoRA checkpoint 的批量评估配置。
+- `configs/eval/qwen_omni_binary_batch_eval.yaml`：并行评估后端的批量评估配置。
+- `configs/eval/qwen_omni_binary_batch_eval_vllm.yaml`：vLLM 后端的批量评估配置。
 - `scripts/prepare_swift_av_sft.py`：统一数据准备入口，通过 `--dataset` 选择一个数据集。
-- `scripts/eval_binary_logits_qwen_omni.py`：单 checkpoint logits 评估入口。
-- `scripts/eval_parallel_binary_qwen_omni.py`：按 GPU 切分 JSONL 并发评估入口。
-- `scripts/eval_binary_logits_qwen_omni_vllm.py`：vLLM 后端单 checkpoint logits 评估入口。
-- `scripts/eval_batch_binary_qwen_omni.py`：批量评估入口。
+- `scripts/eval_batch_binary_qwen_omni.py`：并行评估后端的批量评估入口。
+- `scripts/eval_batch_binary_qwen_omni_vllm.py`：vLLM 后端的批量评估入口。
 - `src/omniav_detect/data/common.py`：视频扫描、ms-swift record 构造、统计文件写出。
 - `src/omniav_detect/data/prepare_runner.py`：配置驱动的数据准备调度。
 - `src/omniav_detect/data/fakeavceleb.py`：FakeAVCeleb metadata 合并、分层切分和输出构建。
 - `src/omniav_detect/data/mavosdd.py`：MAVOS-DD Arrow metadata 读取和 open-set split 解析。
-- `src/omniav_detect/evaluation/binary_logits.py`：单 checkpoint 评估主流程。
-- `src/omniav_detect/evaluation/model_runtime.py`：Qwen2.5-Omni + LoRA 加载、多模态输入处理和 logits forward。
+- `src/omniav_detect/evaluation/batch_runner.py`：按 YAML 调度并行或 vLLM 批量评估。
 - `src/omniav_detect/evaluation/parallel_runner.py`：多 GPU JSONL 分片、worker 调度、预测合并和指标重算。
-- `src/omniav_detect/evaluation/binary_logits_vllm.py`：vLLM 后端单 checkpoint 评估主流程。
+- `src/omniav_detect/evaluation/binary_logits_vllm.py`：vLLM 后端单次评估主流程，由批量入口调用。
 - `src/omniav_detect/evaluation/vllm_runtime.py`：vLLM 推理、多模态输入和 logprob 解析。
 - `src/omniav_detect/evaluation/metrics.py`：Accuracy、AUC、AP/mAP、Confusion Matrix 和 recall 指标计算。
 - `src/omniav_detect/evaluation/visualization.py`：评估结果的 CSV / HTML 可视化输出，matplotlib 可用时额外生成 PNG。
-- `src/omniav_detect/evaluation/batch_runner.py`：按 YAML 配置顺序调度多个评估任务。
 
 ## 数据说明
 
@@ -69,6 +66,14 @@ python scripts/eval_batch_binary_qwen_omni.py \
   --dry_run
 ```
 
+vLLM 批量评估 dry-run：
+
+```bash
+python scripts/eval_batch_binary_qwen_omni_vllm.py \
+  --config configs/eval/qwen_omni_binary_batch_eval_vllm.yaml \
+  --dry_run
+```
+
 详细命令见 `docs/commands.md`。
 
 ## 阅读顺序
@@ -78,6 +83,6 @@ python scripts/eval_batch_binary_qwen_omni.py \
 3. `src/omniav_detect/data/prepare_runner.py`
 4. `src/omniav_detect/data/common.py`
 5. `src/omniav_detect/data/fakeavceleb.py` 和 `src/omniav_detect/data/mavosdd.py`
-6. `src/omniav_detect/evaluation/binary_logits.py`
-7. `src/omniav_detect/evaluation/model_runtime.py`、`metrics.py`、`outputs.py`、`visualization.py`
-8. `src/omniav_detect/evaluation/batch_runner.py`
+6. `src/omniav_detect/evaluation/batch_runner.py`
+7. `src/omniav_detect/evaluation/parallel_runner.py`
+8. `src/omniav_detect/evaluation/binary_logits_vllm.py`、`vllm_runtime.py`、`metrics.py`、`outputs.py`、`visualization.py`
