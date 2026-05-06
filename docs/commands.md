@@ -281,3 +281,83 @@ Get-ChildItem -File -Recurse -Depth 2 | Select-Object -ExpandProperty FullName
 ```bash
 git status
 ```
+
+### FakeAVCeleb 验证集视频时长随机抽样
+
+用途：在服务器上从 `stage1_to_stage2_fakeavceleb_encoder_full/predictions.jsonl` 读取视频路径，随机抽样最多 1000 个视频，用 `ffprobe` 粗略统计时长分布。
+
+```bash
+python - <<'PY'
+import json, random, subprocess, statistics
+from pathlib import Path
+
+pred_path = Path('/data/OneDay/OmniAV-Detect/outputs/batch_eval_binary/stage1_to_stage2_fakeavceleb_encoder_full/predictions.jsonl')
+if not pred_path.exists():
+    pred_path = Path('/data/OneDay/OmniAV-Detect/reports/batch_eval_binary/stage1_to_stage2_fakeavceleb_encoder_full/predictions.jsonl')
+
+paths = []
+with pred_path.open(encoding='utf-8') as f:
+    for line in f:
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        p = row.get('video_path') or row.get('video') or (row.get('videos') or [None])[0]
+        if p:
+            paths.append(p)
+
+random.seed(42)
+sample = random.sample(paths, min(1000, len(paths)))
+durations = []
+failed = []
+for p in sample:
+    cmd = [
+        'ffprobe', '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        p,
+    ]
+    try:
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT, timeout=20).strip()
+        durations.append(float(out))
+    except Exception as exc:
+        failed.append({'path': p, 'error': str(exc)})
+
+durations.sort()
+def q(x):
+    if not durations:
+        return None
+    idx = round((len(durations) - 1) * x)
+    return durations[idx]
+
+summary = {
+    'source_predictions': str(pred_path),
+    'sampled': len(sample),
+    'ok': len(durations),
+    'failed': len(failed),
+    'min_sec': min(durations) if durations else None,
+    'p25_sec': q(0.25),
+    'median_sec': q(0.50),
+    'p75_sec': q(0.75),
+    'p90_sec': q(0.90),
+    'p95_sec': q(0.95),
+    'max_sec': max(durations) if durations else None,
+    'mean_sec': statistics.mean(durations) if durations else None,
+}
+print(json.dumps(summary, ensure_ascii=False, indent=2))
+Path('reports/fakeavceleb_eval_duration_sample1000.json').write_text(json.dumps({'summary': summary, 'failed': failed[:50]}, ensure_ascii=False, indent=2), encoding='utf-8')
+PY
+```
+
+输入：
+
+- `reports/batch_eval_binary/stage1_to_stage2_fakeavceleb_encoder_full/predictions.jsonl` 或服务器 outputs 下同名文件
+- `ffprobe` 可执行程序
+
+输出：
+
+- 控制台 JSON summary
+- `reports/fakeavceleb_eval_duration_sample1000.json`
+
+备注：
+
+- 该命令只抽样读取视频元信息，不重新跑模型评估。
