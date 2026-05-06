@@ -11,6 +11,16 @@ datasets:
     output_dir: /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb  # 输出 JSONL 和统计文件目录
     mode: binary  # binary / structured / both
     train_ratio: 0.7  # FakeAVCeleb 按 overall_label + modality_type 分层切分训练集比例
+    split_protocol: random_stratified  # random_stratified / mrdf_5fold
+    folds_root: /data/OneDay/OmniAV-Detect/data_fakeavceleb  # MRDF 5 折 txt 目录，仅 split_protocol=mrdf_5fold 时使用
+
+  fakeavceleb_mrdf5fold:
+    type: fakeavceleb
+    root: /data/OneDay/FakeAVCeleb  # FakeAVCeleb 本地根目录
+    output_dir: /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_mrdf5fold  # MRDF 5 折输出目录
+    mode: binary  # binary / structured / both
+    split_protocol: mrdf_5fold  # 使用 MRDF 的 subject-independent 5 折 protocol
+    folds_root: /data/OneDay/OmniAV-Detect/data_fakeavceleb  # train_*.txt / test_*.txt 所在目录
 
   mavosdd:
     type: mavosdd

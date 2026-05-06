@@ -34,9 +34,18 @@ SYSTEM_PROMPT = (
 BINARY_USER_PROMPT = (
     "<video>\nGiven the video, please assess if it's Real or Fake? Only answer Real or Fake."
 )
+BINARY_AUDIO_USER_PROMPT = (
+    "<video>\n<audio>\nGiven the video and audio, please assess if it's Real or Fake? "
+    "Only answer Real or Fake."
+)
 STRUCTURED_USER_PROMPT = (
     "<video>\nGiven the video, please assess if it's Real or Fake? Return a compact JSON object "
     "with overall_label, video_label, audio_label, modality_type, and evidence."
+)
+STRUCTURED_AUDIO_USER_PROMPT = (
+    "<video>\n<audio>\nGiven the video and audio, please assess if it's Real or Fake? "
+    "Return a compact JSON object with overall_label, video_label, audio_label, modality_type, "
+    "and evidence."
 )
 
 
@@ -224,6 +233,15 @@ def make_messages(user_prompt: str, assistant_content: str) -> List[Dict[str, st
     ]
 
 
+def sample_audio_paths(sample: Sample) -> List[str]:
+    """从内部样本中提取音频路径列表，兼容单路径和多路径写法。"""
+    if sample.get("audio_paths"):
+        return [str(path) for path in sample["audio_paths"] if str(path).strip()]
+    if sample.get("audio_path"):
+        return [str(sample["audio_path"])]
+    return []
+
+
 def make_binary_record(sample: Sample) -> Record:
     """
     函数功能：
@@ -239,11 +257,16 @@ def make_binary_record(sample: Sample) -> Record:
     - assistant 只输出 `Real` 或 `Fake`，视频路径保持绝对路径。
     """
     meta = sample["meta"]
-    return {
+    audio_paths = sample_audio_paths(sample)
+    record = {
         "messages": make_messages(BINARY_USER_PROMPT, meta["overall_label"]),
         "videos": [sample["video_path"]],
         "meta": meta,
     }
+    if audio_paths:
+        record["messages"] = make_messages(BINARY_AUDIO_USER_PROMPT, meta["overall_label"])
+        record["audios"] = audio_paths
+    return record
 
 
 def make_structured_record(sample: Sample) -> Record:
@@ -268,7 +291,8 @@ def make_structured_record(sample: Sample) -> Record:
         "modality_type": meta.get("modality_type", "Unknown"),
         "evidence": make_structured_evidence(meta),
     }
-    return {
+    audio_paths = sample_audio_paths(sample)
+    record = {
         "messages": make_messages(
             STRUCTURED_USER_PROMPT,
             json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
@@ -276,6 +300,13 @@ def make_structured_record(sample: Sample) -> Record:
         "videos": [sample["video_path"]],
         "meta": meta,
     }
+    if audio_paths:
+        record["messages"] = make_messages(
+            STRUCTURED_AUDIO_USER_PROMPT,
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        )
+        record["audios"] = audio_paths
+    return record
 
 
 def make_structured_evidence(meta: Dict[str, Any]) -> str:

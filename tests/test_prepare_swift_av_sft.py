@@ -296,6 +296,110 @@ class PrepareSwiftAvSftTests(unittest.TestCase):
             missing_or_invalid,
         )
 
+    def test_build_fakeavceleb_samples_stores_subject_id_for_fold_protocol(self):
+        scratch = Path(__file__).resolve().parent / ".tmp"
+        scratch.mkdir(exist_ok=True)
+        root = scratch / f"fakeavceleb_subject_{uuid.uuid4().hex}"
+        for dirname in self.prepare.FAKEAVCELEB_CATEGORIES:
+            (root / dirname).mkdir(parents=True)
+        video_dir = root / "RealVideo-RealAudio" / "African" / "men" / "id00076"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        valid_video = video_dir / "00109.mp4"
+        valid_video.write_bytes(b"video")
+        (root / "meta_data.csv").write_text(
+            "source,target1,target2,method,category,type,race,gender,path\n"
+            "id00076,-,-,real,A,RealVideo-RealAudio,African,men,00109.mp4\n",
+            encoding="utf-8",
+        )
+
+        samples = self.prepare.build_fakeavceleb_samples(
+            root=root,
+            max_samples_per_class=None,
+            seed=42,
+            missing_or_invalid=[],
+        )
+
+        self.assertEqual(len(samples), 1)
+        self.assertEqual(samples[0]["meta"]["subject_id"], "id00076")
+
+    def test_build_fakeavceleb_fold_output_records_uses_subject_independent_split_files(self):
+        scratch = Path(__file__).resolve().parent / ".tmp"
+        scratch.mkdir(exist_ok=True)
+        root = scratch / f"fakeavceleb_fold_{uuid.uuid4().hex}"
+        folds_root = scratch / f"fakeavceleb_folds_{uuid.uuid4().hex}"
+        folds_root.mkdir(parents=True, exist_ok=True)
+        for dirname in self.prepare.FAKEAVCELEB_CATEGORIES:
+            (root / dirname).mkdir(parents=True)
+
+        subjects = {
+            "id00076": ("RealVideo-RealAudio", "Real"),
+            "id02005": ("FakeVideo-FakeAudio", "Fake"),
+        }
+        for subject_id, (dirname, _) in subjects.items():
+            video_dir = root / dirname / "African" / "men" / subject_id
+            video_dir.mkdir(parents=True, exist_ok=True)
+            (video_dir / "00001.mp4").write_bytes(b"video")
+
+        (root / "meta_data.csv").write_text(
+            "\n".join(
+                [
+                    "source,target1,target2,method,category,type,race,gender,path",
+                    "id00076,-,-,real,A,RealVideo-RealAudio,African,men,00001.mp4",
+                    "id02005,-,-,fake,A,FakeVideo-FakeAudio,African,men,00001.mp4",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        for fold_idx in range(1, 6):
+            train_ids = ["id00076"] if fold_idx == 1 else ["id02005"]
+            test_ids = ["id02005"] if fold_idx == 1 else ["id00076"]
+            (folds_root / f"train_{fold_idx}.txt").write_text("\n".join(train_ids) + "\n", encoding="utf-8")
+            (folds_root / f"test_{fold_idx}.txt").write_text("\n".join(test_ids) + "\n", encoding="utf-8")
+
+        samples = self.prepare.build_fakeavceleb_samples(
+            root=root,
+            max_samples_per_class=None,
+            seed=42,
+            missing_or_invalid=[],
+        )
+        outputs = self.prepare.build_fakeavceleb_fold_output_records(
+            samples,
+            mock.Mock(folds_root=str(folds_root), mode="binary"),
+        )
+
+        self.assertIn("fakeavceleb_mrdf5fold_fold1_binary_train.jsonl", outputs)
+        self.assertIn("fakeavceleb_mrdf5fold_fold1_binary_test.jsonl", outputs)
+        self.assertEqual(len(outputs["fakeavceleb_mrdf5fold_fold1_binary_train.jsonl"]), 1)
+        self.assertEqual(len(outputs["fakeavceleb_mrdf5fold_fold1_binary_test.jsonl"]), 1)
+        train_meta = outputs["fakeavceleb_mrdf5fold_fold1_binary_train.jsonl"][0]["meta"]
+        test_meta = outputs["fakeavceleb_mrdf5fold_fold1_binary_test.jsonl"][0]["meta"]
+        self.assertEqual(train_meta["subject_id"], "id00076")
+        self.assertEqual(test_meta["subject_id"], "id02005")
+
+    def test_make_binary_record_includes_audios_when_sample_has_audio_path(self):
+        sample = {
+            "video_path": str(Path("clip.mp4").resolve()),
+            "audio_path": str(Path("clip.wav").resolve()),
+            "meta": {
+                "dataset": "FakeAVCeleb",
+                "source_path": str(Path("clip.mp4").resolve()),
+                "overall_label": "Real",
+                "video_label": "Real",
+                "audio_label": "Real",
+                "modality_type": "R-R",
+                "language": "",
+                "generative_method": "",
+                "original_split": "",
+            },
+        }
+
+        record = self.prepare.make_binary_record(sample)
+
+        self.assertEqual(record["audios"], [sample["audio_path"]])
+        self.assertIn("<audio>", record["messages"][1]["content"])
+
 
 if __name__ == "__main__":
     unittest.main()

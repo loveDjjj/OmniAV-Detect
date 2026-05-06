@@ -52,6 +52,67 @@ python scripts/prepare_swift_av_sft.py \
 
 - 正式生成 JSONL 时去掉 `--dry_run`，如需 structured 数据加 `--mode both`。
 
+### FakeAVCeleb MRDF 5-fold dry-run
+
+用途：按 MRDF 的 subject-independent 5 折 protocol 生成 FakeAVCeleb train/test JSONL 定义，并写统计与预览。
+
+```bash
+python scripts/prepare_swift_av_sft.py \
+  --config configs/data/swift_av_sft.yaml \
+  --dataset fakeavceleb_mrdf5fold \
+  --dry_run \
+  --num_preview 5
+```
+
+输入：
+
+- 默认 `/data/OneDay/FakeAVCeleb`
+- 默认 `/data/OneDay/OmniAV-Detect/data_fakeavceleb/train_*.txt`
+- 默认 `/data/OneDay/OmniAV-Detect/data_fakeavceleb/test_*.txt`
+
+输出：
+
+- 默认 `/data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_mrdf5fold`
+- `fakeavceleb_mrdf5fold_fold*_binary_train.jsonl`
+- `fakeavceleb_mrdf5fold_fold*_binary_test.jsonl`
+- `dataset_scan_summary.json`
+- `dataset_stats.json`
+- `missing_or_invalid_files.csv`
+- `preview_samples.json`
+
+备注：
+
+- 当前实现按 metadata 的 `source` 字段或目录中的 `idxxxxx` subject id 匹配 5 折文件。
+- 如果 subject id 无法解析，脚本会直接报错，避免静默生成错误划分。
+
+### 从视频 JSONL 抽取音频并生成带 audios 字段的新 JSONL
+
+用途：从已有 FakeAVCeleb / MAVOS-DD 视频 JSONL 中批量抽取音频，生成显式包含 `audios` 字段的 AV 数据集。
+
+```bash
+python scripts/extract_audio_and_build_av_jsonl.py \
+  --input_jsonl /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_mrdf5fold/fakeavceleb_mrdf5fold_fold1_binary_train.jsonl \
+  --output_jsonl /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_mrdf5fold/fakeavceleb_mrdf5fold_fold1_binary_train_with_audio.jsonl \
+  --audio_root /data/OneDay/OmniAV-Detect/data/audio_cache/fakeavceleb_mrdf5fold \
+  --sample_rate 16000 \
+  --audio_channels 1
+```
+
+输入：
+
+- 已生成的 JSONL，要求每条记录有 `videos[0]`
+- `ffmpeg` 可执行程序
+
+输出：
+
+- 新 JSONL：保留原 `messages` / `videos` / `meta`，新增 `audios`
+- 音频文件目录：默认按视频原路径层级写到 `audio_root`
+
+备注：
+
+- 脚本默认输出 `.wav`，并使用单声道 16 kHz PCM。
+- 可先加 `--dry_run` 只检查路径组织是否符合预期。
+
 ### MAVOS-DD dry-run
 
 用途：扫描 MAVOS-DD，写统计和预览，不写训练 JSONL。
@@ -217,6 +278,51 @@ bash train_stage1_to_stage2_FakeAVCeleb.sh
 
 - 脚本会自动选择 `stage1` 输出目录下最新的 `checkpoint-*`。
 - 训练逻辑沿用当前 `train_stage2_FakeAVCeleb.sh` 的冻结策略和学习率。
+
+### FakeAVCeleb MRDF 5-fold + 显式 audios: stage1 训练
+
+用途：使用 MRDF 5 折 train JSONL 和显式 `audios` 字段，做 FakeAVCeleb 的 stage1 LoRA 训练。
+
+```bash
+FOLD_ID=1 bash train_stage1_FakeAVCeleb_MRDF5Fold_Audio.sh
+```
+
+输入：
+
+- `/data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_mrdf5fold/fakeavceleb_mrdf5fold_fold1_binary_train_with_audio.jsonl`
+
+输出：
+
+- `/data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_mrdf5fold_fold1_binary_audio_explicit`
+
+备注：
+
+- 当前脚本显式设置 `USE_AUDIO_IN_VIDEO=False`，避免视频内音频和 `audios` 字段重复进入模型。
+- 切换 fold 时只需修改 `FOLD_ID=1..5`。
+
+### FakeAVCeleb MRDF 5-fold + 显式 audios: stage1 产物接 stage2 思路继续训练
+
+用途：先将 MRDF 5 折的 stage1 LoRA checkpoint merge 到基模，再按 stage2 的 `full + freeze_llm` 思路继续训练。
+
+```bash
+FOLD_ID=1 bash train_stage1_to_stage2_FakeAVCeleb_MRDF5Fold_Audio.sh
+```
+
+输入：
+
+- `/data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_mrdf5fold_fold1_binary_audio_explicit/checkpoint-*`
+- `/data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_mrdf5fold/fakeavceleb_mrdf5fold_fold1_binary_train_with_audio.jsonl`
+
+输出：
+
+- merge 后模型目录：`/data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_fakeavceleb_mrdf5fold_fold1_merged`
+- stage2 输出：`/data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_fakeavceleb_mrdf5fold_fold1_encoder_full_audio_explicit`
+
+备注：
+
+- 当前脚本同样显式设置 `USE_AUDIO_IN_VIDEO=False`。
+- 默认会自动寻找 `STAGE1_OUTPUT_DIR` 下最新的 `checkpoint-*`。
+- 如果数据集、输出目录或 fold 编号不同，可通过环境变量覆盖。
 
 ### MAVOS-DD: stage1 产物接 stage2 思路继续训练
 

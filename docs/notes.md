@@ -1,32 +1,49 @@
-﻿# Notes
+# Notes
 
 ## 需求
 
-基于 `reports/eval_v1` 中完整的 MAVOS-DD stage1->stage2 测试结果，结合旧版 `reports/binary_eval_summary_report.md`，新建一版更新分析报告。
+为 FakeAVCeleb 新增一种参考 MRDF 的 subject-independent 5 折划分方式，并补一个从视频 JSONL 抽取音频、生成带 `audios` 字段数据集的脚本，供 Qwen 多模态训练使用。
 
 ## 修改文件
 
-- reports/binary_eval_summary_report_v2.md
+- configs/data/swift_av_sft.yaml
+- README.md
 - docs/notes.md
+- docs/commands.md
+- docs/architecture.md
 - docs/logs/2026-05.md
+- .gitignore
+- src/omniav_detect/data/common.py
+- src/omniav_detect/data/fakeavceleb.py
+- src/omniav_detect/data/prepare_runner.py
+- scripts/extract_audio_and_build_av_jsonl.py
+- train_stage1_FakeAVCeleb_MRDF5Fold_Audio.sh
+- train_stage1_to_stage2_FakeAVCeleb_MRDF5Fold_Audio.sh
+- tests/test_prepare_swift_av_sft.py
+- tests/test_extract_audio_and_build_av_jsonl.py
 
 ## 修改内容
 
-- 新建 `binary_eval_summary_report_v2.md`，保留一目了然的报告结构：两阶段做法、数据分布、eval_v1 完整结果、论文对比、重点判断。
-- 更新 MAVOS-DD 四个 split 的完整 stage1->stage2 指标：in-domain、open-language、open-model、open-full。
-- 明确 open-model 已完整跑完但 Fake recall 很低；open-full 标签全 Fake，AUC 为 NaN，不能公平对比论文。
-- 保留 FakeAVCeleb 数据划分和结果异常判断。
+- 为 FakeAVCeleb 增加 `split_protocol`，支持默认 `random_stratified` 和 `mrdf_5fold` 两种 protocol。
+- 新增 `fakeavceleb_mrdf5fold` 配置项，默认读取 `/data/.../data_fakeavceleb/train_*.txt` 与 `test_*.txt`。
+- 在 FakeAVCeleb 样本 meta 中补充 `subject_id`，用于和 MRDF 5 折文件做 subject-independent 匹配。
+- 新增音频抽取脚本：从已有视频 JSONL 批量抽取 wav，并生成带 `audios` 字段的新 JSONL。
+- 扩展公共 record 构造逻辑：样本带音频路径时，自动写入 `audios` 并在 user prompt 中显式包含 `<audio>`。
+- 新增 FakeAVCeleb MRDF 5 折 + 显式 audios 的 stage1 和 stage1->stage2 训练脚本，并强制关闭 `use_audio_in_video`，避免音频重复输入。
 
 ## 验证
 
 ```bash
-python -B -m py_compile src/omniav_detect/evaluation/metrics.py
-python -c "from pathlib import Path; text=Path('reports/binary_eval_summary_report_v2.md').read_text(encoding='utf-8-sig'); assert 'MAVOS-DD Open-model' in text and '59.75%' in text and '标签全 Fake' in text"
+python -B -m unittest tests.test_prepare_swift_av_sft tests.test_extract_audio_and_build_av_jsonl -v
+python -B -m py_compile scripts/extract_audio_and_build_av_jsonl.py src/omniav_detect/data/common.py src/omniav_detect/data/fakeavceleb.py src/omniav_detect/data/prepare_runner.py
+python -B scripts/prepare_swift_av_sft.py --dataset fakeavceleb_mrdf5fold --dry_run --num_preview 2
+Get-Content train_stage1_FakeAVCeleb_MRDF5Fold_Audio.sh
+Get-Content train_stage1_to_stage2_FakeAVCeleb_MRDF5Fold_Audio.sh
 ```
 
 结果：待运行
 
 ## Git
 
-- branch: `docs/eval-v1-summary-report`
-- commit: `git commit -m "docs: add eval v1 binary result analysis"`
+- branch: `feat/fakeavceleb-mrdf5fold-audio`
+- commit: `git commit -m "feat: add fakeavceleb mrdf 5-fold preparation"`

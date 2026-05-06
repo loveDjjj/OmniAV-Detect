@@ -30,6 +30,7 @@ _ensure_src_on_path()
 from omniav_detect.data.common import *  # noqa: F401,F403
 from omniav_detect.data.fakeavceleb import (  # noqa: F401
     FAKEAVCELEB_CATEGORIES,
+    build_fakeavceleb_fold_output_records,
     build_fakeavceleb_output_records,
     build_fakeavceleb_samples,
     stratified_split,

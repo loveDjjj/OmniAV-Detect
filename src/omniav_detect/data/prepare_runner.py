@@ -49,6 +49,8 @@ class PrepareRun:
     dry_run: bool
     mode: str = "binary"
     train_ratio: float = 0.7
+    split_protocol: str = "random_stratified"
+    folds_root: Optional[Path] = None
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -68,6 +70,17 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--max_samples_per_class", type=int, default=None)
     parser.add_argument("--mode", choices=["binary", "structured", "both"], default=None)
     parser.add_argument("--fakeavceleb_train_ratio", type=float, default=None)
+    parser.add_argument(
+        "--fakeavceleb_split_protocol",
+        choices=["random_stratified", "mrdf_5fold"],
+        default=None,
+        help="FakeAVCeleb split protocol: default random stratified split or MRDF subject-independent 5-fold.",
+    )
+    parser.add_argument(
+        "--fakeavceleb_folds_root",
+        default=None,
+        help="Directory that contains MRDF FakeAVCeleb train_*.txt / test_*.txt files.",
+    )
     parser.add_argument("--dry_run", action="store_true")
     parser.add_argument("--fakeavceleb_root", default=None, help="Compatibility alias for --root.")
     parser.add_argument("--mavos_root", default=None, help="Compatibility alias for --root.")
@@ -131,6 +144,8 @@ def resolve_dataset_run(
     resolved.setdefault("dry_run", False)
     resolved.setdefault("mode", "binary")
     resolved.setdefault("train_ratio", resolved.get("fakeavceleb_train_ratio", 0.7))
+    resolved.setdefault("split_protocol", "random_stratified")
+    resolved.setdefault("folds_root", None)
 
     root_override = overrides.get("root")
     if root_override:
@@ -142,6 +157,10 @@ def resolve_dataset_run(
             resolved[key] = overrides[key]
     if overrides.get("fakeavceleb_train_ratio") is not None:
         resolved["train_ratio"] = overrides["fakeavceleb_train_ratio"]
+    if overrides.get("fakeavceleb_split_protocol") is not None:
+        resolved["split_protocol"] = overrides["fakeavceleb_split_protocol"]
+    if overrides.get("fakeavceleb_folds_root"):
+        resolved["folds_root"] = overrides["fakeavceleb_folds_root"]
     if overrides.get("dry_run"):
         resolved["dry_run"] = True
 
@@ -164,6 +183,12 @@ def resolve_dataset_run(
         dry_run=bool(resolved.get("dry_run", False)),
         mode=str(resolved.get("mode", "binary")),
         train_ratio=float(resolved.get("train_ratio", 0.7)),
+        split_protocol=str(resolved.get("split_protocol", "random_stratified")),
+        folds_root=(
+            None
+            if resolved.get("folds_root") in {None, ""}
+            else Path(str(resolved["folds_root"])).expanduser()
+        ),
     )
     validate_prepare_run(run)
     return run
@@ -188,6 +213,10 @@ def validate_prepare_run(run: PrepareRun) -> None:
         raise ValueError("FakeAVCeleb train_ratio must be between 0 and 1")
     if run.dataset_type == "fakeavceleb" and run.mode not in {"binary", "structured", "both"}:
         raise ValueError("FakeAVCeleb mode must be one of: binary, structured, both")
+    if run.dataset_type == "fakeavceleb" and run.split_protocol not in {"random_stratified", "mrdf_5fold"}:
+        raise ValueError("FakeAVCeleb split_protocol must be one of: random_stratified, mrdf_5fold")
+    if run.dataset_type == "fakeavceleb" and run.split_protocol == "mrdf_5fold" and run.folds_root is None:
+        raise ValueError("FakeAVCeleb split_protocol=mrdf_5fold requires folds_root")
 
 
 def build_dataset_outputs(run: PrepareRun, issues: List[Issue]) -> tuple[str, Dict[str, Any], Dict[str, List[Record]]]:
@@ -217,8 +246,13 @@ def build_dataset_outputs(run: PrepareRun, issues: List[Issue]) -> tuple[str, Di
             fakeavceleb_train_ratio=run.train_ratio,
             seed=run.seed,
             mode=run.mode,
+            split_protocol=run.split_protocol,
+            folds_root=str(run.folds_root) if run.folds_root is not None else None,
         )
-        outputs = fakeavceleb.build_fakeavceleb_output_records(samples, output_args)
+        if run.split_protocol == "mrdf_5fold":
+            outputs = fakeavceleb.build_fakeavceleb_fold_output_records(samples, output_args)
+        else:
+            outputs = fakeavceleb.build_fakeavceleb_output_records(samples, output_args)
     elif run.dataset_type in {"mavosdd", "mavos-dd"}:
         dataset_label = "MAVOS-DD"
         split_samples = mavosdd.build_mavosdd_samples(
@@ -289,6 +323,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "max_samples_per_class": args.max_samples_per_class,
         "mode": args.mode,
         "fakeavceleb_train_ratio": args.fakeavceleb_train_ratio,
+        "fakeavceleb_split_protocol": args.fakeavceleb_split_protocol,
+        "fakeavceleb_folds_root": args.fakeavceleb_folds_root,
         "dry_run": args.dry_run,
     }
     try:

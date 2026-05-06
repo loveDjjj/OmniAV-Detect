@@ -4,6 +4,11 @@
 
 OmniAV-Detect 面向 audio-video deepfake detection，当前支持把 FakeAVCeleb 和 MAVOS-DD 本地数据转换为 ms-swift / Qwen2.5-Omni SFT JSONL，并通过两条批量评估路径计算 Qwen2.5-Omni 基模或 LoRA binary detector 的 `Real` / `Fake` token logits：并行评估后端和 vLLM 后端。
 
+其中 FakeAVCeleb 当前支持两种数据划分 protocol：
+
+- 默认 `70% / 30%` 的 `overall_label + modality_type` 分层切分。
+- 参考 MRDF 的 subject-independent `5-fold` 划分，读取 `data_fakeavceleb/train_*.txt` 和 `test_*.txt`。
+
 ## 项目结构
 
 ```text
@@ -29,8 +34,9 @@ docs/                         # 命令、架构、记录
 - `scripts/eval_batch_binary_qwen_omni_vllm.py`：vLLM 后端的批量评估入口。
 - `src/omniav_detect/data/common.py`：视频扫描、ms-swift record 构造、统计文件写出。
 - `src/omniav_detect/data/prepare_runner.py`：配置驱动的数据准备调度。
-- `src/omniav_detect/data/fakeavceleb.py`：FakeAVCeleb metadata 合并、分层切分和输出构建。
+- `src/omniav_detect/data/fakeavceleb.py`：FakeAVCeleb metadata 合并、默认分层切分、MRDF 5 折切分和输出构建。
 - `src/omniav_detect/data/mavosdd.py`：MAVOS-DD Arrow metadata 读取和 open-set split 解析。
+- `scripts/extract_audio_and_build_av_jsonl.py`：从已有视频 JSONL 批量抽取音频，并生成带 `audios` 字段的新 JSONL。
 - `src/omniav_detect/evaluation/batch_runner.py`：按 YAML 调度并行或 vLLM 批量评估。
 - `src/omniav_detect/evaluation/parallel_runner.py`：多 GPU JSONL 分片、worker 调度、预测合并和指标重算。
 - `src/omniav_detect/evaluation/binary_logits_vllm.py`：vLLM 后端单次评估主流程，由批量入口调用。
@@ -42,6 +48,13 @@ docs/                         # 命令、架构、记录
 
 数据准备输入为本地视频文件，不复制视频；输出 JSONL 中的 `videos` 保存绝对路径。每条 SFT 记录包含 `messages`、`videos` 和 `meta`，binary SFT 的 assistant 只回答 `Real` 或 `Fake`。
 
+如果需要显式把音频作为独立输入喂给 Qwen 多模态模型，可在生成视频 JSONL 后，再运行 `scripts/extract_audio_and_build_av_jsonl.py` 额外写出带 `audios` 字段的数据集。
+
+注意：
+
+- 旧流程是 `videos` + `use_audio_in_video=True`，由框架从视频里自动抽音频。
+- 新流程是 `videos + audios`，训练时必须关闭 `use_audio_in_video`，否则同一份音频会重复进入模型。
+
 数据准备会同时写出 `dataset_scan_summary.json`、`dataset_stats.json`、`missing_or_invalid_files.csv` 和 `preview_samples.json`。评估会输出 `predictions.jsonl`、`bad_samples.jsonl`、`metrics.json` 和 `visualizations/`，批量评估会额外输出 `batch_eval_summary.json/csv`。
 
 ## 运行方式
@@ -50,6 +63,12 @@ FakeAVCeleb dry-run：
 
 ```bash
 python scripts/prepare_swift_av_sft.py --dataset fakeavceleb --dry_run --num_preview 5
+```
+
+FakeAVCeleb MRDF 5-fold dry-run：
+
+```bash
+python scripts/prepare_swift_av_sft.py --dataset fakeavceleb_mrdf5fold --dry_run --num_preview 5
 ```
 
 MAVOS-DD dry-run：

@@ -25,6 +25,8 @@ wandb/
 reports/eval_v1/
 swift_sft/
 checkpoints/
+audio_cache/
+*.wav
 *.pt
 *.pth
 *.ckpt

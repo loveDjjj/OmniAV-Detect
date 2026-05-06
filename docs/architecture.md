@@ -20,6 +20,7 @@
 - 数据公共逻辑：`src/omniav_detect/data/common.py`
 - FakeAVCeleb 处理：`src/omniav_detect/data/fakeavceleb.py`
 - MAVOS-DD 处理：`src/omniav_detect/data/mavosdd.py`
+- 音频抽取与 AV JSONL 增强：`scripts/extract_audio_and_build_av_jsonl.py`
 - 批量评估调度：`src/omniav_detect/evaluation/batch_runner.py`
 - 并行评估调度：`src/omniav_detect/evaluation/parallel_runner.py`
 - Transformers 单 worker 评估：`src/omniav_detect/evaluation/binary_logits.py`
@@ -54,8 +55,15 @@
 1. `prepare_runner` 读取 `configs/data/swift_av_sft.yaml`
 2. 根据 `--dataset` 只处理一个数据集
 3. 扫描本地真实视频文件，过滤缺失、空文件、非法扩展名
-4. 构造 ms-swift JSONL record
-5. 写出训练/验证 JSONL、统计文件、缺失文件报告和预览样本
+4. 按配置选择默认分层切分或 MRDF subject-independent 5 折切分
+5. 构造 ms-swift JSONL record
+6. 如需独立音频输入，可在 JSONL 生成后批量抽音频并补写 `audios`
+7. 写出训练/验证 JSONL、统计文件、缺失文件报告和预览样本
+
+显式 `audios` 训练约束：
+
+- 如果 JSONL 已经显式写入 `audios`，训练时必须关闭 `use_audio_in_video`。
+- 否则同一条样本的音频会同时来自 `audios` 字段和视频内自动抽取，导致输入重复。
 
 ### 并行评估
 

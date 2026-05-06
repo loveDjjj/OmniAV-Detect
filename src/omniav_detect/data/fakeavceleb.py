@@ -5,7 +5,9 @@
 主要内容：
 - build_fakeavceleb_samples：从四个 FakeAVCeleb 模态目录构建有效样本。
 - stratified_split：按 overall_label + modality_type 分层切分 train/eval。
-- build_fakeavceleb_output_records：生成 binary / structured 输出记录。
+- build_fakeavceleb_fold_splits：按 MRDF 的 subject-independent 5 折文件生成 train/test。
+- build_fakeavceleb_output_records：生成默认 train/eval 输出记录。
+- build_fakeavceleb_fold_output_records：生成 5 折 protocol 输出记录。
 
 使用方式：
 - 被统一入口 `omniav_detect.data.prepare_runner` 调用。
@@ -216,6 +218,73 @@ def merge_optional_metadata(meta: Dict[str, Any], source_metadata: Optional[Dict
     meta["source_metadata"] = {str(key): normalize_json_value(value) for key, value in source_metadata.items()}
 
 
+def fakeavceleb_subject_id(path: Path, root: Path, metadata: Optional[Dict[str, Any]]) -> str:
+    """
+    函数功能：
+    - 解析 FakeAVCeleb 样本所属的 subject id，优先使用 metadata 的 `source` 字段。
+
+    参数：
+    - path: 当前视频路径。
+    - root: FakeAVCeleb 根目录。
+    - metadata: 可选 metadata 行。
+
+    返回：
+    - 形如 `id00076` 的 subject id；无法解析时返回空字符串。
+    """
+    if metadata is not None:
+        source = clean_text(metadata.get("source"))
+        if source:
+            return source
+
+    try:
+        relative_parts = path.resolve(strict=False).relative_to(root.resolve(strict=False)).parts
+    except ValueError:
+        relative_parts = path.parts
+    for part in reversed(relative_parts[:-1]):
+        text = clean_text(part)
+        if text.lower().startswith("id"):
+            return text
+    return ""
+
+
+def load_fakeavceleb_fold_ids(folds_root: Path) -> Dict[int, Dict[str, set[str]]]:
+    """
+    函数功能：
+    - 读取 MRDF 风格的 `train_*.txt` / `test_*.txt` 5 折划分文件。
+
+    参数：
+    - folds_root: 存放 5 折 txt 文件的目录。
+
+    返回：
+    - `fold_index -> {"train": set(...), "test": set(...)}` 映射。
+
+    关键逻辑：
+    - 文件内容按 subject id 逐行读取，自动去除空白和重复。
+    """
+    folds: Dict[int, Dict[str, set[str]]] = {}
+    for fold_idx in range(1, 6):
+        fold_data: Dict[str, set[str]] = {}
+        for split_name in ("train", "test"):
+            split_path = folds_root / f"{split_name}_{fold_idx}.txt"
+            if not split_path.exists():
+                raise ValueError(f"Missing FakeAVCeleb fold file: {split_path}")
+            values = {
+                clean_text(line)
+                for line in split_path.read_text(encoding="utf-8-sig").splitlines()
+                if clean_text(line)
+            }
+            if not values:
+                raise ValueError(f"FakeAVCeleb fold file is empty: {split_path}")
+            fold_data[split_name] = values
+        overlap = fold_data["train"] & fold_data["test"]
+        if overlap:
+            raise ValueError(
+                f"FakeAVCeleb fold {fold_idx} has overlapping subject ids in train/test: {sorted(overlap)[:10]}"
+            )
+        folds[fold_idx] = fold_data
+    return folds
+
+
 def build_fakeavceleb_samples(
     root: Path,
     max_samples_per_class: Optional[int],
@@ -306,6 +375,9 @@ def build_fakeavceleb_samples(
                 "original_split": "",
             }
             merge_optional_metadata(meta, metadata)
+            subject_id = fakeavceleb_subject_id(file_path, root, metadata)
+            if subject_id:
+                meta["subject_id"] = subject_id
             samples.append(make_sample(file_path, meta))
 
     record_fakeavceleb_metadata_missing_files(root, metadata_rows, missing_or_invalid)
@@ -357,6 +429,66 @@ def stratified_split(
     return train, eval_samples
 
 
+def build_fakeavceleb_fold_splits(
+    samples: List[Sample],
+    folds_root: Path,
+) -> Dict[int, Dict[str, List[Sample]]]:
+    """
+    函数功能：
+    - 按 MRDF 的 subject-independent 5 折文件，把样本拆成 train/test。
+
+    参数：
+    - samples: 已扫描得到的 FakeAVCeleb 样本列表。
+    - folds_root: `train_*.txt` / `test_*.txt` 所在目录。
+
+    返回：
+    - `fold_index -> {"train": [...], "test": [...]}`。
+
+    关键逻辑：
+    - 以样本的 `meta.subject_id` 匹配划分文件；未命中任何 fold 的样本会报错，避免静默漏数。
+    """
+    folds = load_fakeavceleb_fold_ids(folds_root)
+    splits: Dict[int, Dict[str, List[Sample]]] = {
+        fold_idx: {"train": [], "test": []} for fold_idx in folds
+    }
+    unmatched_subjects: set[str] = set()
+    missing_subject_paths: List[str] = []
+
+    for sample in samples:
+        meta = sample.get("meta", {})
+        subject_id = clean_text(meta.get("subject_id"))
+        if not subject_id:
+            missing_subject_paths.append(sample.get("video_path", ""))
+            continue
+        matched_any_fold = False
+        for fold_idx, fold_data in folds.items():
+            if subject_id in fold_data["train"]:
+                splits[fold_idx]["train"].append(sample)
+                matched_any_fold = True
+            elif subject_id in fold_data["test"]:
+                splits[fold_idx]["test"].append(sample)
+                matched_any_fold = True
+        if not matched_any_fold:
+            unmatched_subjects.add(subject_id)
+
+    if missing_subject_paths:
+        preview = missing_subject_paths[:5]
+        raise ValueError(
+            "Some FakeAVCeleb samples have no subject_id, so MRDF 5-fold split cannot be applied: "
+            f"{preview}"
+        )
+    if unmatched_subjects:
+        raise ValueError(
+            "Some FakeAVCeleb subject ids are not covered by the MRDF 5-fold files: "
+            f"{sorted(unmatched_subjects)[:20]}"
+        )
+
+    for fold_idx, fold_splits in splits.items():
+        for split_name in ("train", "test"):
+            fold_splits[split_name].sort(key=lambda item: item.get("video_path", ""))
+    return splits
+
+
 def build_fakeavceleb_output_records(samples: List[Sample], args: Any) -> Dict[str, List[Dict[str, Any]]]:
     outputs: Dict[str, List[Dict[str, Any]]] = {}
     train_samples, eval_samples = stratified_split(samples, args.fakeavceleb_train_ratio, args.seed)
@@ -373,4 +505,39 @@ def build_fakeavceleb_output_records(samples: List[Sample], args: Any) -> Dict[s
             make_structured_record(sample) for sample in eval_samples
         ]
 
+    return outputs
+
+
+def build_fakeavceleb_fold_output_records(samples: List[Sample], args: Any) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    函数功能：
+    - 按 MRDF 的 5 折 protocol 生成 FakeAVCeleb 训练/测试 JSONL。
+
+    参数：
+    - samples: 有效样本列表。
+    - args: 运行参数，要求包含 `folds_root`、`mode`。
+
+    返回：
+    - 输出文件名到记录列表的映射。
+    """
+    outputs: Dict[str, List[Dict[str, Any]]] = {}
+    split_map = build_fakeavceleb_fold_splits(samples, Path(args.folds_root))
+
+    for fold_idx in sorted(split_map):
+        train_samples = split_map[fold_idx]["train"]
+        test_samples = split_map[fold_idx]["test"]
+        if args.mode in {"binary", "both"}:
+            outputs[f"fakeavceleb_mrdf5fold_fold{fold_idx}_binary_train.jsonl"] = [
+                make_binary_record(sample) for sample in train_samples
+            ]
+            outputs[f"fakeavceleb_mrdf5fold_fold{fold_idx}_binary_test.jsonl"] = [
+                make_binary_record(sample) for sample in test_samples
+            ]
+        if args.mode in {"structured", "both"}:
+            outputs[f"fakeavceleb_mrdf5fold_fold{fold_idx}_structured_train.jsonl"] = [
+                make_structured_record(sample) for sample in train_samples
+            ]
+            outputs[f"fakeavceleb_mrdf5fold_fold{fold_idx}_structured_test.jsonl"] = [
+                make_structured_record(sample) for sample in test_samples
+            ]
     return outputs
