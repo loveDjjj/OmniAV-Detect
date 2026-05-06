@@ -22,7 +22,7 @@ logs/*.log
 outputs/
 runs/
 wandb/
-reports/
+reports/eval_v1/
 swift_sft/
 checkpoints/
 *.pt
