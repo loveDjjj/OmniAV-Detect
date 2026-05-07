@@ -23,6 +23,7 @@ outputs/
 runs/
 wandb/
 reports/eval_v1/
+reports/eval_mrdf5fold/
 swift_sft/
 checkpoints/
 audio_cache/

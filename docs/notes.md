@@ -1,33 +1,38 @@
-﻿# Notes
+# Notes
 
 ## 需求
 
-新增一个单独运行 FakeAVCeleb MRDF 5-fold Stage 2 only 的训练脚本，参考 `train_stage2_FakeAVCeleb.sh`，但适配显式 `audios` 数据集。
+基于 `reports/eval_mrdf5fold` 中 FakeAVCeleb MRDF5Fold fold1 的最新评估结果，生成一份只说明当前数据集构建方式和评估效果的简短 Markdown 报告。
 
 ## 修改文件
 
-- train_stage2_FakeAVCeleb_MRDF5Fold_Audio.sh
-- docs/commands.md
+- reports/fakeavceleb_mrdf5fold_eval_report.md
 - docs/notes.md
 - docs/logs/2026-05.md
 
 ## 修改内容
 
-- 新增 `train_stage2_FakeAVCeleb_MRDF5Fold_Audio.sh`，默认 `FOLD_ID=1`，可切换 1..5 折。
-- 训练策略沿用 Stage 2 only：`tuner_type=full`、`freeze_llm=true`、`freeze_vit=false`、`freeze_aligner=false`。
-- 数据集路径指向 `fakeavceleb_mrdf5fold_fold${FOLD_ID}_binary_train_with_audio.jsonl`。
-- 强制关闭 `USE_AUDIO_IN_VIDEO` / `use_audio_in_video`，避免显式 `audios` 与视频内音频重复输入。
+- 新增 FakeAVCeleb MRDF5Fold fold1 数据构建与效果简报。
+- 报告说明了 subject-independent 5-fold、二分类标签合并规则、显式音频输入设置。
+- 汇总 Without SFT、Stage1、Stage1 -> Stage2 三组结果，并补充 balanced accuracy 与 Real recall，指出当前高 accuracy 主要来自测试集 Fake 占比 97.59%。
 
 ## 验证
 
-```bash
-Get-Content train_stage2_FakeAVCeleb_MRDF5Fold_Audio.sh
-bash -n train_stage2_FakeAVCeleb_MRDF5Fold_Audio.sh
+```powershell
+python - <<'PY'
+from pathlib import Path
+p = Path('reports/fakeavceleb_mrdf5fold_eval_report.md')
+text = p.read_text(encoding='utf-8-sig')
+assert 'FakeAVCeleb MRDF5Fold' in text
+assert '97.59%' in text
+assert 'Real recall' in text or 'Real Recall' in text
+print('report ok')
+PY
 ```
 
-结果：部分通过（`bash -n` 在当前 Windows/WSL 环境输出 E_ACCESSDENIED，不能作为可靠结果；脚本文本与 docs 命令条目检查通过）
+结果：通过，报告可用 UTF-8 正常读取，关键指标已写入。
 
 ## Git
 
-- branch: `feat/fakeavceleb-mrdf-stage2-audio`
-- commit: `git commit -m "feat: add fakeavceleb mrdf stage2 training script"`
+- branch: `docs/fakeavceleb-mrdf5fold-eval-report`
+- commit: `docs: add fakeavceleb mrdf5fold eval report`
