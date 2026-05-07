@@ -14,6 +14,7 @@ export use_audio_in_video=False
 export ENABLE_AUDIO_OUTPUT=False
 export TOKENIZERS_PARALLELISM=false
 export PYTHONWARNINGS="ignore:PySoundFile failed:UserWarning,ignore:librosa.core.audio.__audioread_load:FutureWarning"
+export PYTHONPATH="${PYTHONPATH:-}:$(pwd)/src"
 
 MODEL_PATH="${MODEL_PATH:-/data/OneDay/models/qwen/Qwen2.5-Omni-7B}"
 ADAPTER_ROOT="${ADAPTER_ROOT:-/data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_mrdf5fold_fold1_binary_audio_explicit}"
