@@ -21,17 +21,23 @@ from omniav_detect.evaluation.constants import SYSTEM_PROMPT, USER_PROMPT_AFTER_
 from omniav_detect.evaluation.metrics import pair_softmax
 
 
-def build_conversation(video_path: str) -> List[Dict[str, Any]]:
+def build_conversation(video_path: str, audio_paths: Sequence[str] | None = None) -> List[Dict[str, Any]]:
     """
     函数功能：
     - 构造与训练一致的 Qwen2.5-Omni 多模态对话。
 
     参数：
     - video_path: 单个视频文件绝对路径。
+    - audio_paths: 可选显式音频路径；存在时按训练 JSONL 的 `<video> + <audio>` 方式构造。
 
     返回：
     - Qwen2.5-Omni processor 可读取的 conversation 列表。
     """
+    user_content: List[Dict[str, Any]] = [{"type": "video", "video": video_path}]
+    for audio_path in audio_paths or []:
+        if str(audio_path).strip():
+            user_content.append({"type": "audio", "audio": str(audio_path)})
+    user_content.append({"type": "text", "text": USER_PROMPT_AFTER_VIDEO})
     return [
         {
             "role": "system",
@@ -39,10 +45,7 @@ def build_conversation(video_path: str) -> List[Dict[str, Any]]:
         },
         {
             "role": "user",
-            "content": [
-                {"type": "video", "video": video_path},
-                {"type": "text", "text": USER_PROMPT_AFTER_VIDEO},
-            ],
+            "content": user_content,
         },
     ]
 
@@ -267,7 +270,7 @@ def evaluate_batch(
         raise RuntimeError("Missing torch in evaluation environment.") from exc
 
     forward_model = resolve_forward_model(model)
-    conversations = [build_conversation(sample["video_path"]) for sample in samples]
+    conversations = [build_conversation(sample["video_path"], sample.get("audio_paths")) for sample in samples]
     processor_input = conversations[0] if len(conversations) == 1 else conversations
     device = infer_input_device(forward_model)
     inputs = prepare_inputs(processor, processor_input, device, args.use_audio_in_video, args.fps)
@@ -285,6 +288,7 @@ def evaluate_batch(
                 "index": sample["index"],
                 "line_number": sample["line_number"],
                 "video_path": sample["video_path"],
+                "audio_paths": sample.get("audio_paths", []),
                 "label": sample["label"],
                 "pred": scores["pred"],
                 "p_real": scores["p_real"],

@@ -146,6 +146,34 @@ class EvalBatchBinaryQwenOmniTests(unittest.TestCase):
         self.assertIn("--max_samples", command)
         self.assertIn("50", command)
 
+    def test_resolve_run_can_configure_mrdf_explicit_audio_eval(self):
+        config = {
+            "model_path": "/models/qwen",
+            "output_root": "/tmp/batch_eval",
+            "defaults": {
+                "batch_size": 1,
+                "fps": 1.0,
+                "torch_dtype": "bfloat16",
+                "device_map": "auto",
+                "use_audio_in_video": True,
+                "save_every": 100,
+            },
+            "runs": [
+                {
+                    "name": "fakeavceleb_mrdf5fold_fold1_stage1",
+                    "dataset": "FakeAVCeleb",
+                    "adapter_path": "/outputs/stage1/checkpoint-1",
+                    "jsonl": "/data/fakeavceleb_mrdf5fold_fold1_binary_test_with_audio.jsonl",
+                    "use_audio_in_video": False,
+                }
+            ],
+        }
+
+        resolved = self.batch_module.resolve_run(config, config["runs"][0], overrides={})
+
+        self.assertFalse(resolved["use_audio_in_video"])
+        self.assertIn("mrdf5fold_fold1", resolved["jsonl"])
+
     def test_build_eval_command_omits_adapter_flag_for_base_model_eval(self):
         run = {
             "name": "base_model_eval",

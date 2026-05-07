@@ -199,6 +199,35 @@ class EvalBinaryLogitsQwenOmniTests(unittest.TestCase):
         self.assertEqual(samples[0]["video_path"], rows[0]["videos"][0])
         self.assertEqual(samples[0]["source_record"], rows[0])
 
+    def test_load_jsonl_samples_preserves_explicit_audio_paths(self):
+        scratch = Path(__file__).resolve().parent / ".tmp"
+        scratch.mkdir(exist_ok=True)
+        jsonl_path = scratch / f"eval_samples_audio_{uuid.uuid4().hex}.jsonl"
+        audio_path = str((scratch / "a.wav").resolve())
+        row = {
+            "messages": [],
+            "videos": [str((scratch / "a.mp4").resolve())],
+            "audios": [audio_path],
+            "meta": {"overall_label": "Fake", "dataset": "FakeAVCeleb"},
+        }
+        jsonl_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+        samples = eval_module.load_jsonl_samples(jsonl_path)
+
+        self.assertEqual(samples[0]["audio_paths"], [audio_path])
+        self.assertEqual(samples[0]["audio_path"], audio_path)
+
+    def test_build_conversation_includes_explicit_audio_when_provided(self):
+        video_path = str(Path("clip.mp4").resolve())
+        audio_path = str(Path("clip.wav").resolve())
+
+        conversation = eval_module.build_conversation(video_path, [audio_path])
+
+        user_content = conversation[1]["content"]
+        self.assertEqual(user_content[0], {"type": "video", "video": video_path})
+        self.assertEqual(user_content[1], {"type": "audio", "audio": audio_path})
+        self.assertEqual(user_content[2]["text"], eval_module.USER_PROMPT_AFTER_VIDEO)
+
     def test_compute_metrics_uses_fake_as_positive_class(self):
         predictions = [
             {"label": "Real", "pred": "Real", "p_fake": 0.1},

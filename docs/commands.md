@@ -324,6 +324,50 @@ FOLD_ID=1 bash train_stage1_to_stage2_FakeAVCeleb_MRDF5Fold_Audio.sh
 - 默认会自动寻找 `STAGE1_OUTPUT_DIR` 下最新的 `checkpoint-*`。
 - 如果数据集、输出目录或 fold 编号不同，可通过环境变量覆盖。
 
+### FakeAVCeleb MRDF 5-fold + 显式 audios: fold1 stage1 评估
+
+用途：评估 fold1 的 stage1 LoRA 模型，输入 JSONL 已包含 `audios` 字段。
+
+```bash
+bash eval_fakeavceleb_mrdf5fold_fold1_stage1_audio.sh
+```
+
+输入：
+
+- `/data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_mrdf5fold_fold1_binary_audio_explicit/checkpoint-*`
+- `/data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_mrdf5fold/fakeavceleb_mrdf5fold_fold1_binary_test_with_audio.jsonl`
+
+输出：
+
+- `/data/OneDay/OmniAV-Detect/outputs/batch_eval_binary/fakeavceleb_mrdf5fold_fold1_stage1_audio`
+
+备注：
+
+- 脚本会自动寻找 stage1 输出目录下最新的 `checkpoint-*`。
+- 脚本强制关闭 `use_audio_in_video`，避免 `audios` 字段和视频内音频重复输入。
+
+### FakeAVCeleb MRDF 5-fold + 显式 audios: fold1 stage1->stage2 评估
+
+用途：评估 fold1 的 stage1->stage2 full checkpoint，输入 JSONL 已包含 `audios` 字段。
+
+```bash
+bash eval_fakeavceleb_mrdf5fold_fold1_stage1_to_stage2_audio.sh
+```
+
+输入：
+
+- `/data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_fakeavceleb_mrdf5fold_fold1_encoder_full_audio_explicit/checkpoint-*`
+- `/data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_mrdf5fold/fakeavceleb_mrdf5fold_fold1_binary_test_with_audio.jsonl`
+
+输出：
+
+- `/data/OneDay/OmniAV-Detect/outputs/batch_eval_binary/fakeavceleb_mrdf5fold_fold1_stage1_to_stage2_audio`
+
+备注：
+
+- 如果 full checkpoint 目录下存在 `checkpoint-*`，脚本会自动使用最新 checkpoint；否则直接使用该模型目录。
+- 脚本强制关闭 `use_audio_in_video`，避免 `audios` 字段和视频内音频重复输入。
+
 ### MAVOS-DD: stage1 产物接 stage2 思路继续训练
 
 用途：先将 MAVOS-DD 的 stage1 LoRA checkpoint merge 到基模，再按当前 stage2 的 `full + freeze_llm` 思路继续训练。

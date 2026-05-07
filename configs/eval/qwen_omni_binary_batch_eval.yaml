@@ -16,6 +16,20 @@ defaults:
   num_workers: 2  # 并行评估 worker 数
 
 runs:
+  - name: fakeavceleb_mrdf5fold_fold1_stage1_audio
+    dataset: FakeAVCeleb
+    model_path: /data/OneDay/models/qwen/Qwen2.5-Omni-7B  # Base model + fold1 stage1 LoRA
+    adapter_path: /data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_fakeavceleb_mrdf5fold_fold1_binary_audio_explicit
+    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_mrdf5fold/fakeavceleb_mrdf5fold_fold1_binary_test_with_audio.jsonl
+    use_audio_in_video: false  # JSONL already has explicit audios; do not also extract audio from video
+
+  - name: fakeavceleb_mrdf5fold_fold1_stage1_to_stage2_audio
+    dataset: FakeAVCeleb
+    model_path: /data/OneDay/OmniAV-Detect/outputs/stage1_to_stage2_fakeavceleb_mrdf5fold_fold1_encoder_full_audio_explicit  # Full checkpoint
+    adapter_path:
+    jsonl: /data/OneDay/OmniAV-Detect/data/swift_sft/fakeavceleb_mrdf5fold/fakeavceleb_mrdf5fold_fold1_binary_test_with_audio.jsonl
+    use_audio_in_video: false  # JSONL already has explicit audios; do not also extract audio from video
+
   #- name: stage1_qwen2_5_omni_fakeavceleb_binary_audio_in_video
   #  dataset: FakeAVCeleb
   #  model_path: /data/OneDay/models/qwen/Qwen2.5-Omni-7B   # Full checkpoint

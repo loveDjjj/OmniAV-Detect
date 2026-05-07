@@ -3,7 +3,7 @@
 - 负责 Qwen2.5-Omni binary 评估所需的 JSONL 样本读取和基础文件写出。
 
 主要内容：
-- load_jsonl_samples：读取 ms-swift JSONL 并抽取视频路径与标签。
+- load_jsonl_samples：读取 ms-swift JSONL 并抽取视频、显式音频路径与标签。
 - batch_samples：按 batch_size 分组样本。
 - write_jsonl / write_json：评估输出文件写入工具。
 
@@ -30,17 +30,22 @@ def normalize_video_path(raw_path: str, jsonl_path: Path) -> str:
     return str((jsonl_path.parent / path).resolve())
 
 
+def normalize_media_path(raw_path: str, jsonl_path: Path) -> str:
+    """将 JSONL 中的视频或音频相对路径规范化为可读取路径。"""
+    return normalize_video_path(raw_path, jsonl_path)
+
+
 def load_jsonl_samples(jsonl_path: Path | str, max_samples: Optional[int] = None) -> List[Dict[str, Any]]:
     """
     函数功能：
-    - 读取 ms-swift JSONL 测试集并抽取视频路径与 Real/Fake 标签。
+    - 读取 ms-swift JSONL 测试集并抽取视频路径、显式音频路径与 Real/Fake 标签。
 
     参数：
     - jsonl_path: 测试集 JSONL 路径。
     - max_samples: 最多读取的样本数，None 表示读取全部。
 
     返回：
-    - 评估样本列表，包含 index、line_number、video_path、label、meta 和原始记录。
+    - 评估样本列表，包含 index、line_number、video_path、audio_paths、label、meta 和原始记录。
 
     关键逻辑：
     - 以 `meta.overall_label` 作为真值标签，缺少视频或标签非法时直接报错。
@@ -56,17 +61,21 @@ def load_jsonl_samples(jsonl_path: Path | str, max_samples: Optional[int] = None
                 continue
             record = json.loads(line)
             videos = record.get("videos") or []
+            audios = record.get("audios") or []
             meta = record.get("meta") or {}
             label = normalize_label(meta.get("overall_label"))
             if not videos:
                 raise ValueError(f"{path}:{line_number} has no videos field")
             if label not in {"Real", "Fake"}:
                 raise ValueError(f"{path}:{line_number} has invalid meta.overall_label={meta.get('overall_label')!r}")
+            audio_paths = [normalize_media_path(str(audio), path) for audio in audios if str(audio).strip()]
             samples.append(
                 {
                     "index": len(samples),
                     "line_number": line_number,
                     "video_path": normalize_video_path(str(videos[0]), path),
+                    "audio_path": audio_paths[0] if audio_paths else "",
+                    "audio_paths": audio_paths,
                     "label": label,
                     "meta": meta,
                     "source_record": record,
