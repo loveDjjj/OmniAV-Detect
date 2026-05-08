@@ -19,6 +19,7 @@ JSONL_ROOT="${JSONL_ROOT:-/data/OneDay/OmniAV-Detect/data/swift_sft/mvad}"
 VAL_RATIO="${VAL_RATIO:-0.1}"
 SEED="${SEED:-42}"
 FFMPEG="${FFMPEG:-ffmpeg}"
+EXTRACTOR="${EXTRACTOR:-7z}"
 
 EXTRA_ARGS=()
 if [[ "${OVERWRITE:-false}" == "true" ]]; then
@@ -43,5 +44,6 @@ python -m mvad.prepare_mvad \
   --jsonl_root "${JSONL_ROOT}" \
   --val_ratio "${VAL_RATIO}" \
   --seed "${SEED}" \
+  --extractor "${EXTRACTOR}" \
   --ffmpeg "${FFMPEG}" \
   "${EXTRA_ARGS[@]}"

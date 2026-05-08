@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from mvad.common import make_binary_audio_record, output_audio_path, write_jsonl
+from src.omniav_detect.evaluation.progress import create_progress
 
 
 def setup_logging() -> None:
@@ -85,13 +86,19 @@ def build_jsonl_records(
     返回：
     - JSONL 记录列表。
     """
+    sample_list = list(samples)
     records = []
-    for sample in samples:
-        video_path = Path(sample["video_path"]).expanduser().resolve(strict=False)
-        audio_path = output_audio_path(video_path, audio_root)
-        if not dry_run and not skip_audio and (overwrite or not audio_path.exists()):
-            extract_audio(ffmpeg, video_path, audio_path, sample_rate, audio_channels, overwrite)
-        records.append(make_binary_audio_record(sample, audio_path))
+    progress = create_progress(total=len(sample_list), desc="extract mvad audio", unit="video")
+    try:
+        for sample in sample_list:
+            video_path = Path(sample["video_path"]).expanduser().resolve(strict=False)
+            audio_path = output_audio_path(video_path, audio_root)
+            if not dry_run and not skip_audio and (overwrite or not audio_path.exists()):
+                extract_audio(ffmpeg, video_path, audio_path, sample_rate, audio_channels, overwrite)
+            records.append(make_binary_audio_record(sample, audio_path))
+            progress.update(1)
+    finally:
+        progress.close()
     return records
 
 

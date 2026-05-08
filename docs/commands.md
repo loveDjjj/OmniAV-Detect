@@ -167,6 +167,8 @@ SOURCE_ROOT=/data/MVAD bash mvad/run_prepare_mvad.sh
 备注：
 
 - 当前 MVAD 公开数据只有 train，因此这是 internal validation baseline，不是论文官方 test 复现。
+- 默认使用 `7z x` 解压 zip；如果 7z 命令名不同，可设置 `EXTRACTOR=7za` 或 `EXTRACTOR=7zz`。
+- 解压和抽音频阶段会显示进度条。
 - JSONL 已显式包含 `audios`，后续训练必须关闭 `use_audio_in_video`。
 - 如果 zip 已经解压，可用 `SKIP_UNZIP=true`；如果音频已抽取，可用 `SKIP_AUDIO=true`。
 

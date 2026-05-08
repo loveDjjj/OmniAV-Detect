@@ -17,6 +17,8 @@
 SOURCE_ROOT=/data/MVAD bash mvad/run_prepare_mvad.sh
 ```
 
+默认使用 `7z x` 解压 zip，并在解压和抽音频阶段显示进度条。可通过 `EXTRACTOR=7z`、`FFMPEG=ffmpeg` 覆盖命令。
+
 默认输出：
 
 - `/data/OneDay/OmniAV-Detect/data/mvad_unpacked`

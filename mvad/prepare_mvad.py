@@ -35,6 +35,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--jsonl_root", default="/data/OneDay/OmniAV-Detect/data/swift_sft/mvad")
     parser.add_argument("--val_ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--extractor", default="7z", help="Archive extractor executable, default 7z.")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--sample_rate", type=int, default=16000)
     parser.add_argument("--audio_channels", type=int, default=1)
@@ -55,7 +56,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     jsonl_root = Path(args.jsonl_root)
 
     if not args.skip_unzip:
-        manifest = unpack_archives(source_root, unpack_root, overwrite=args.overwrite)
+        manifest = unpack_archives(source_root, unpack_root, overwrite=args.overwrite, extractor=args.extractor)
         write_json(work_root / "unpack_manifest.json", manifest)
     samples = build_samples(unpack_root)
     train, val = group_aware_split(samples, val_ratio=args.val_ratio, seed=args.seed)

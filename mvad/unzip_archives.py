@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import argparse
 import logging
+import subprocess
 import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from mvad.common import SUPPORTED_VIDEO_EXTENSIONS, write_json
+from src.omniav_detect.evaluation.progress import create_progress
 
 
 def setup_logging() -> None:
@@ -40,7 +42,42 @@ def count_extracted_videos(target_dir: Path) -> int:
     return sum(1 for path in target_dir.rglob("*") if path.is_file() and path.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS)
 
 
-def unpack_one_archive(archive_path: Path, source_root: Path, unpack_root: Path, overwrite: bool) -> Dict[str, Any]:
+def extract_with_7z(archive_path: Path, target_dir: Path, overwrite: bool, extractor: str) -> None:
+    """
+    函数功能：
+    - 调用 7z 解压 zip 文件。
+    """
+    target_dir.mkdir(parents=True, exist_ok=True)
+    overwrite_flag = "-aoa" if overwrite else "-aos"
+    command = [
+        extractor,
+        "x",
+        "-y",
+        overwrite_flag,
+        f"-o{target_dir}",
+        str(archive_path),
+    ]
+    completed = subprocess.run(command, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"7z failed for {archive_path} -> {target_dir}: {completed.stderr.strip() or completed.stdout.strip()}"
+        )
+
+
+def extract_with_zipfile(archive_path: Path, target_dir: Path) -> None:
+    """使用 Python zipfile 解压，主要作为本地测试或无 7z 环境的后备方案。"""
+    target_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive_path) as archive:
+        archive.extractall(target_dir)
+
+
+def unpack_one_archive(
+    archive_path: Path,
+    source_root: Path,
+    unpack_root: Path,
+    overwrite: bool,
+    extractor: str,
+) -> Dict[str, Any]:
     """
     函数功能：
     - 解压单个 zip 文件并返回 manifest 记录。
@@ -53,10 +90,12 @@ def unpack_one_archive(archive_path: Path, source_root: Path, unpack_root: Path,
             "output_dir": str(target_dir.resolve(strict=False)),
             "status": "skipped",
             "video_count": count_extracted_videos(target_dir),
+            "extractor": extractor,
         }
-    target_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(archive_path) as archive:
-        archive.extractall(target_dir)
+    if extractor == "zipfile":
+        extract_with_zipfile(archive_path, target_dir)
+    else:
+        extract_with_7z(archive_path, target_dir, overwrite, extractor)
     done_marker.write_text("ok\n", encoding="utf-8")
     video_count = count_extracted_videos(target_dir)
     if video_count == 0:
@@ -66,10 +105,16 @@ def unpack_one_archive(archive_path: Path, source_root: Path, unpack_root: Path,
         "output_dir": str(target_dir.resolve(strict=False)),
         "status": "extracted",
         "video_count": video_count,
+        "extractor": extractor,
     }
 
 
-def unpack_archives(source_root: Path, unpack_root: Path, overwrite: bool = False) -> List[Dict[str, Any]]:
+def unpack_archives(
+    source_root: Path,
+    unpack_root: Path,
+    overwrite: bool = False,
+    extractor: str = "7z",
+) -> List[Dict[str, Any]]:
     """
     函数功能：
     - 解压 source_root 下所有 zip 文件。
@@ -86,8 +131,13 @@ def unpack_archives(source_root: Path, unpack_root: Path, overwrite: bool = Fals
     if not archives:
         raise ValueError(f"No zip archives found under {source_root}")
     manifest = []
-    for archive_path in archives:
-        manifest.append(unpack_one_archive(archive_path, source_root, unpack_root, overwrite))
+    progress = create_progress(total=len(archives), desc="unpack mvad zip", unit="zip")
+    try:
+        for archive_path in archives:
+            manifest.append(unpack_one_archive(archive_path, source_root, unpack_root, overwrite, extractor))
+            progress.update(1)
+    finally:
+        progress.close()
     return manifest
 
 
@@ -97,6 +147,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--source_root", required=True)
     parser.add_argument("--unpack_root", required=True)
     parser.add_argument("--manifest_path", default=None)
+    parser.add_argument("--extractor", default="7z", help="Archive extractor executable, default 7z. Use zipfile for Python fallback.")
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args(argv)
 
@@ -105,7 +156,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     """解压 CLI 主流程。"""
     setup_logging()
     args = parse_args(argv)
-    manifest = unpack_archives(Path(args.source_root), Path(args.unpack_root), args.overwrite)
+    manifest = unpack_archives(Path(args.source_root), Path(args.unpack_root), args.overwrite, args.extractor)
     manifest_path = Path(args.manifest_path) if args.manifest_path else Path(args.unpack_root) / "unpack_manifest.json"
     write_json(manifest_path, manifest)
     logging.info("Wrote unpack manifest to %s", manifest_path)

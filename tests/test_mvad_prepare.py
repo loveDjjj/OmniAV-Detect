@@ -5,6 +5,7 @@ import unittest
 import uuid
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -125,6 +126,30 @@ class MvadPrepareTests(unittest.TestCase):
         self.assertEqual(len(manifest), 1)
         self.assertEqual(manifest[0]["status"], "extracted")
         self.assertTrue((self.scratch / "unpacked" / "train" / "real_real" / "talkvid" / "talkvid" / "talk001.mp4").exists())
+
+    def test_unzip_archives_uses_7z_extractor(self):
+        from mvad.unzip_archives import unpack_archives
+
+        source_root = self.scratch / "raw"
+        archive_dir = source_root / "train" / "real_real" / "talkvid"
+        archive_dir.mkdir(parents=True)
+        archive_path = archive_dir / "talkvid.zip"
+        archive_path.write_bytes(b"zip")
+
+        def fake_run(command, check, stdout, stderr, text):
+            target_arg = next(item for item in command if item.startswith("-o"))
+            target_dir = Path(target_arg[2:])
+            target_dir.mkdir(parents=True, exist_ok=True)
+            (target_dir / "talk001.mp4").write_bytes(b"video")
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch("subprocess.run", side_effect=fake_run) as run_mock:
+            manifest = unpack_archives(source_root, self.scratch / "unpacked", overwrite=False, extractor="7z")
+
+        command = run_mock.call_args.args[0]
+        self.assertEqual(command[0], "7z")
+        self.assertIn("x", command)
+        self.assertEqual(manifest[0]["extractor"], "7z")
 
 
 if __name__ == "__main__":
