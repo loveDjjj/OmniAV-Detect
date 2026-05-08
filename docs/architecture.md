@@ -4,7 +4,7 @@
 
 项目当前包含三条主线：
 
-1. 将 FakeAVCeleb / MAVOS-DD 本地视频整理为 ms-swift / Qwen2.5-Omni 可直接使用的 SFT JSONL。
+1. 将 FakeAVCeleb / MAVOS-DD 本地视频整理为 ms-swift / Qwen2.5-Omni 可直接使用的 SFT JSONL；MVAD 通过根目录 `mvad/` 的独立管线整理公开 train 数据。
 2. 通过外部 `swift sft` 命令训练 Qwen2.5-Omni 基模或 LoRA。
 3. 读取 SFT JSONL，用 Qwen2.5-Omni 的 `Real` / `Fake` token logits 做二分类评估。
 
@@ -21,6 +21,7 @@
 - FakeAVCeleb 处理：`src/omniav_detect/data/fakeavceleb.py`
 - MAVOS-DD 处理：`src/omniav_detect/data/mavosdd.py`
 - 音频抽取与 AV JSONL 增强：`scripts/extract_audio_and_build_av_jsonl.py`
+- MVAD 独立预处理：`mvad/common.py`、`unzip_archives.py`、`build_index_and_split.py`、`build_av_jsonl.py`、`prepare_mvad.py`
 - 批量评估调度：`src/omniav_detect/evaluation/batch_runner.py`
 - 并行评估调度：`src/omniav_detect/evaluation/parallel_runner.py`
 - Transformers 单 worker 评估：`src/omniav_detect/evaluation/binary_logits.py`
@@ -64,6 +65,15 @@
 
 - 如果 JSONL 已经显式写入 `audios`，训练时必须关闭 `use_audio_in_video`。
 - 否则同一条样本的音频会同时来自 `audios` 字段和视频内自动抽取，导致输入重复。
+
+### MVAD 独立预处理
+
+1. `mvad/run_prepare_mvad.sh` 调用 `python -m mvad.prepare_mvad`
+2. `unzip_archives` 递归解压公开 `train/**/*.zip`
+3. `build_index_and_split` 扫描解压后视频，按目录推断 `real_real`、`real_fake`、`fake_real`、`fake_fake`
+4. 按 `group_id` 执行 internal train/val 划分，避免同源组跨 split
+5. `build_av_jsonl` 用 `ffmpeg` 抽取 16 kHz mono wav，并生成带 `audios` 字段的 Qwen JSONL
+6. 输出 `mvad_binary_train_with_audio.jsonl` 和 `mvad_binary_val_with_audio.jsonl`
 
 ### 并行评估
 

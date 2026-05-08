@@ -141,6 +141,35 @@ python scripts/prepare_swift_av_sft.py \
 
 - 需要 `datasets` 读取本地 Arrow metadata。
 
+### MVAD 公开 train 数据一键预处理
+
+用途：解压 MVAD zip，按 group-aware 规则划分 internal train/val，抽取音频，并生成 Qwen2.5-Omni 显式 `audios` JSONL。
+
+```bash
+SOURCE_ROOT=/data/MVAD bash mvad/run_prepare_mvad.sh
+```
+
+输入：
+
+- 默认 `/data/MVAD`
+- 目录下应包含 `train/real_real`、`train/real_fake`、`train/fake_real`、`train/fake_fake`
+
+输出：
+
+- `/data/OneDay/OmniAV-Detect/data/mvad_unpacked`
+- `/data/OneDay/OmniAV-Detect/data/mvad_processed/mvad_train_index.jsonl`
+- `/data/OneDay/OmniAV-Detect/data/mvad_processed/mvad_val_index.jsonl`
+- `/data/OneDay/OmniAV-Detect/data/mvad_processed/split_stats.json`
+- `/data/OneDay/OmniAV-Detect/data/audio_cache/mvad`
+- `/data/OneDay/OmniAV-Detect/data/swift_sft/mvad/mvad_binary_train_with_audio.jsonl`
+- `/data/OneDay/OmniAV-Detect/data/swift_sft/mvad/mvad_binary_val_with_audio.jsonl`
+
+备注：
+
+- 当前 MVAD 公开数据只有 train，因此这是 internal validation baseline，不是论文官方 test 复现。
+- JSONL 已显式包含 `audios`，后续训练必须关闭 `use_audio_in_video`。
+- 如果 zip 已经解压，可用 `SKIP_UNZIP=true`；如果音频已抽取，可用 `SKIP_AUDIO=true`。
+
 ## 评估 / 测试
 
 ### 并行批量评估 dry-run
@@ -412,6 +441,27 @@ bash train_stage1_to_stage2_MAVOS-DD.sh
 
 - 脚本会自动选择 `stage1` 输出目录下最新的 `checkpoint-*`。
 - 训练逻辑沿用当前 `train_stage2_MAVOS-DD.sh` 的冻结策略、像素约束和梯度检查点设置。
+
+### MVAD: stage1 显式 audios baseline 训练
+
+用途：使用 MVAD internal train JSONL 做 Qwen2.5-Omni stage1 LoRA baseline 训练。
+
+```bash
+bash mvad/train_stage1_MVAD.sh
+```
+
+输入：
+
+- `/data/OneDay/OmniAV-Detect/data/swift_sft/mvad/mvad_binary_train_with_audio.jsonl`
+
+输出：
+
+- `/data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_mvad_binary_audio_explicit`
+
+备注：
+
+- 脚本显式设置 `USE_AUDIO_IN_VIDEO=False` 和 `use_audio_in_video=False`。
+- 该训练结果只对应 MVAD public train-only internal split，不应表述为官方 test 结果。
 
 ### 顺序执行两个数据集的 stage1 -> stage2 训练
 

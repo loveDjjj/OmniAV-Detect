@@ -10,6 +10,7 @@ tests/.tmp/
 venv/
 env/
 .env
+.worktrees/
 
 # Logs and temporary files
 *.log

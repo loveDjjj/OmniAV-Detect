@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-OmniAV-Detect 面向 audio-video deepfake detection，当前支持把 FakeAVCeleb 和 MAVOS-DD 本地数据转换为 ms-swift / Qwen2.5-Omni SFT JSONL，并通过两条批量评估路径计算 Qwen2.5-Omni 基模或 LoRA binary detector 的 `Real` / `Fake` token logits：并行评估后端和 vLLM 后端。
+OmniAV-Detect 面向 audio-video deepfake detection，当前支持把 FakeAVCeleb 和 MAVOS-DD 本地数据转换为 ms-swift / Qwen2.5-Omni SFT JSONL，并通过两条批量评估路径计算 Qwen2.5-Omni 基模或 LoRA binary detector 的 `Real` / `Fake` token logits：并行评估后端和 vLLM 后端。仓库根目录的 `mvad/` 额外提供 MVAD 公开 train 数据的独立预处理和 Qwen2.5-Omni baseline 训练脚本。
 
 其中 FakeAVCeleb 当前支持两种数据划分 protocol：
 
@@ -16,6 +16,7 @@ configs/
   data/                       # 数据准备 YAML 配置
   eval/                       # 批量评估 YAML 配置
 datasets/                     # 数据集下载辅助脚本
+mvad/                         # MVAD 解压、划分、抽音频和 JSONL 生成脚本
 scripts/                      # 可直接运行的薄入口
 src/omniav_detect/            # 核心 Python 包
   data/                       # 数据扫描、转换、统计
@@ -37,6 +38,8 @@ docs/                         # 命令、架构、记录
 - `src/omniav_detect/data/fakeavceleb.py`：FakeAVCeleb metadata 合并、默认分层切分、MRDF 5 折切分和输出构建。
 - `src/omniav_detect/data/mavosdd.py`：MAVOS-DD Arrow metadata 读取和 open-set split 解析。
 - `scripts/extract_audio_and_build_av_jsonl.py`：从已有视频 JSONL 批量抽取音频，并生成带 `audios` 字段的新 JSONL。
+- `mvad/prepare_mvad.py`：MVAD 专用一体化预处理入口，生成 internal train/val 显式音频 JSONL。
+- `mvad/train_stage1_MVAD.sh`：MVAD 显式音频 stage1 LoRA baseline 训练脚本。
 - `src/omniav_detect/evaluation/batch_runner.py`：按 YAML 调度并行或 vLLM 批量评估。
 - `src/omniav_detect/evaluation/parallel_runner.py`：多 GPU JSONL 分片、worker 调度、预测合并和指标重算。
 - `src/omniav_detect/evaluation/binary_logits_vllm.py`：vLLM 后端单次评估主流程，由批量入口调用。
