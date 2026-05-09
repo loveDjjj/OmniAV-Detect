@@ -84,6 +84,48 @@ class MvadPrepareTests(unittest.TestCase):
 
         self.assertEqual(paths, [real_video])
 
+    def test_build_samples_pairs_separate_video_and_audio_dirs(self):
+        from mvad.build_index_and_split import build_samples
+
+        root = self.scratch / "unpacked"
+        video_path = (
+            root
+            / "train"
+            / "real_fake"
+            / "internvid"
+            / "internvid_AudioX"
+            / "internvid_AudioX"
+            / "videos"
+            / "clip_001.mp4"
+        )
+        audio_path = video_path.parent.parent / "audios" / "clip_001.wav"
+        video_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        video_path.write_bytes(b"video")
+        audio_path.write_bytes(b"audio")
+
+        samples, missing = build_samples(root, require_audio_pair=True)
+
+        self.assertEqual(len(samples), 1)
+        self.assertFalse(missing)
+        self.assertEqual(Path(samples[0]["audio_path"]), audio_path.resolve())
+        self.assertEqual(samples[0]["audio_handling"], "paired_file")
+
+    def test_build_samples_reports_video_without_audio_pair(self):
+        from mvad.build_index_and_split import build_samples
+
+        root = self.scratch / "unpacked"
+        video_path = root / "train" / "fake_fake" / "direct" / "kling1_6" / "clip_195.mp4"
+        video_path.parent.mkdir(parents=True, exist_ok=True)
+        video_path.write_bytes(b"video")
+
+        samples, missing = build_samples(root, require_audio_pair=True)
+
+        self.assertEqual(samples, [])
+        self.assertEqual(len(missing), 1)
+        self.assertEqual(Path(missing[0]["video_path"]), video_path.resolve())
+        self.assertEqual(missing[0]["reason"], "missing_audio_pair")
+
     def test_group_aware_split_keeps_group_on_one_side(self):
         from mvad.build_index_and_split import group_aware_split
 
@@ -135,6 +177,37 @@ class MvadPrepareTests(unittest.TestCase):
         self.assertIn("audios", records[0])
         self.assertIn("<audio>", records[0]["messages"][1]["content"])
         self.assertEqual(records[0]["messages"][2]["content"], "Real")
+
+    def test_build_records_uses_paired_audio_without_ffmpeg(self):
+        from mvad.build_av_jsonl import build_jsonl_records
+
+        video_path = self.scratch / "videos" / "clip_001.mp4"
+        audio_path = self.scratch / "audios" / "clip_001.wav"
+        video_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        video_path.write_bytes(b"video")
+        audio_path.write_bytes(b"audio")
+        samples = [
+            {
+                "video_path": str(video_path.resolve()),
+                "audio_path": str(audio_path.resolve()),
+                "audio_handling": "paired_file",
+                "meta": {
+                    "dataset": "MVAD",
+                    "overall_label": "Fake",
+                    "video_label": "Real",
+                    "audio_label": "Fake",
+                    "modality_type": "R-F",
+                    "relative_path": "train/real_fake/source/videos/clip_001.mp4",
+                },
+            }
+        ]
+
+        with mock.patch("mvad.build_av_jsonl.extract_audio") as extract_mock:
+            records = build_jsonl_records(samples, self.scratch / "audio_cache")
+
+        extract_mock.assert_not_called()
+        self.assertEqual(records[0]["audios"], [str(audio_path.resolve())])
 
     def test_unzip_archives_writes_manifest(self):
         from mvad.unzip_archives import unpack_archives

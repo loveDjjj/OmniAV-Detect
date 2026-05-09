@@ -3,7 +3,7 @@
 - 从 MVAD split index 抽取音频，并生成 Qwen2.5-Omni 显式 audios JSONL。
 
 主要内容：
-- build_jsonl_records：为样本规划或抽取音频并生成 JSONL 记录。
+- build_jsonl_records：按 index 中的音频策略生成 JSONL 记录。
 - build_split_jsonl：读取 index 并写出 JSONL。
 - main：命令行入口。
 """
@@ -75,7 +75,9 @@ def build_jsonl_records(
 ) -> List[Dict[str, Any]]:
     """
     函数功能：
-    - 对样本抽取音频并生成 Qwen2.5-Omni JSONL 记录。
+    - 对样本生成 Qwen2.5-Omni JSONL 记录。
+    - 优先使用 index 中已经配对好的 `audio_path`；仅当 `audio_handling=extract_from_video`
+      时才从视频容器里抽音频。
 
     参数：
     - samples: split index 中的样本。
@@ -92,8 +94,17 @@ def build_jsonl_records(
     try:
         for sample in sample_list:
             video_path = Path(sample["video_path"]).expanduser().resolve(strict=False)
-            audio_path = output_audio_path(video_path, audio_root)
-            if not dry_run and not skip_audio and (overwrite or not audio_path.exists()):
+            audio_handling = sample.get("audio_handling", "extract_from_video")
+            if sample.get("audio_path") and audio_handling == "paired_file":
+                audio_path = Path(sample["audio_path"]).expanduser().resolve(strict=False)
+            else:
+                audio_path = output_audio_path(video_path, audio_root)
+            if (
+                audio_handling == "extract_from_video"
+                and not dry_run
+                and not skip_audio
+                and (overwrite or not audio_path.exists())
+            ):
                 extract_audio(ffmpeg, video_path, audio_path, sample_rate, audio_channels, overwrite)
             records.append(make_binary_audio_record(sample, audio_path))
             progress.update(1)

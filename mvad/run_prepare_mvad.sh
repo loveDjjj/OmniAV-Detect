@@ -34,6 +34,9 @@ fi
 if [[ "${SKIP_BAD_ARCHIVES:-false}" == "true" ]]; then
   EXTRA_ARGS+=(--skip_bad_archives)
 fi
+if [[ "${ALLOW_EXTRACT_FROM_VIDEO:-false}" == "true" ]]; then
+  EXTRA_ARGS+=(--allow_extract_from_video)
+fi
 if [[ "${DRY_RUN:-false}" == "true" ]]; then
   EXTRA_ARGS+=(--dry_run)
 fi

@@ -72,8 +72,10 @@
 2. `unzip_archives` 递归解压公开 `train/**/*.zip`，可按需跳过坏包并写入 manifest
 3. `build_index_and_split` 扫描解压后视频，按目录推断 `real_real`、`real_fake`、`fake_real`、`fake_fake`
 4. 按 `group_id` 执行 internal train/val 划分，避免同源组跨 split
-5. `build_av_jsonl` 用 `ffmpeg` 抽取 16 kHz mono wav，并生成带 `audios` 字段的 Qwen JSONL
-6. 输出 `mvad_binary_train_with_audio.jsonl` 和 `mvad_binary_val_with_audio.jsonl`
+5. `pairing` 按 `videos/audios` 或 `video/audio` 目录结构配对分离的音视频文件
+6. 找不到音频配对的样本写入 `missing_audio_pairs.jsonl`，默认不进入训练 JSONL
+7. `build_av_jsonl` 优先使用配对得到的原始音频；只有显式允许时才对视频容器抽音频
+8. 输出 `mvad_binary_train_with_audio.jsonl` 和 `mvad_binary_val_with_audio.jsonl`
 
 ### 并行评估
 
@@ -117,6 +119,7 @@
 - `dataset_stats.json`
 - `missing_or_invalid_files.csv`
 - `preview_samples.json`
+- `missing_audio_pairs.jsonl`
 
 评估输出：
 

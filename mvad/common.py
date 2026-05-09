@@ -5,6 +5,7 @@
 主要内容：
 - parse_video_sample：从 MVAD 视频路径推断二分类标签、四类模态标签和 group_id。
 - iter_video_files：递归扫描支持的视频文件。
+- iter_audio_files：递归扫描支持的音频文件。
 - is_ignored_extracted_path：过滤 macOS 解压元数据等非真实样本文件。
 - write_json / write_jsonl：写出统计文件和 JSONL 文件。
 """
@@ -19,6 +20,7 @@ from typing import Any, Dict, Iterable, List, Sequence
 
 
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
+SUPPORTED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg"}
 AUDIO_GENERATOR_TOKENS = ("audiox", "foleycrafter", "hunyuan", "mmaudio")
 IGNORED_EXTRACTED_DIRS = {"__MACOSX"}
 
@@ -82,6 +84,21 @@ def iter_video_files(root: Path) -> Iterable[Path]:
         if is_ignored_extracted_path(path):
             continue
         if path.is_file() and path.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS:
+            yield path
+
+
+def iter_audio_files(root: Path) -> Iterable[Path]:
+    """
+    函数功能：
+    - 递归扫描目录下所有支持的音频文件。
+    """
+    root = root.expanduser()
+    if not root.exists():
+        return
+    for path in sorted(root.rglob("*")):
+        if is_ignored_extracted_path(path):
+            continue
+        if path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_EXTENSIONS:
             yield path
 
 

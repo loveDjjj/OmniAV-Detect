@@ -43,6 +43,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--skip_unzip", action="store_true")
     parser.add_argument("--skip_audio", action="store_true")
     parser.add_argument("--skip_bad_archives", action="store_true")
+    parser.add_argument("--allow_extract_from_video", action="store_true")
     parser.add_argument("--dry_run", action="store_true")
     return parser.parse_args(argv)
 
@@ -72,9 +73,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 len(failed_archives),
                 work_root / "unpack_manifest.json",
             )
-    samples = build_samples(unpack_root)
+    samples, missing_audio = build_samples(unpack_root, require_audio_pair=not args.allow_extract_from_video)
     train, val = group_aware_split(samples, val_ratio=args.val_ratio, seed=args.seed)
-    write_split_outputs(samples, train, val, work_root)
+    write_split_outputs(samples, train, val, work_root, missing_audio=missing_audio)
     build_split_jsonl(
         work_root / "mvad_train_index.jsonl",
         jsonl_root / "mvad_binary_train_with_audio.jsonl",
