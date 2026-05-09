@@ -5,6 +5,7 @@
 主要内容：
 - parse_video_sample：从 MVAD 视频路径推断二分类标签、四类模态标签和 group_id。
 - iter_video_files：递归扫描支持的视频文件。
+- is_ignored_extracted_path：过滤 macOS 解压元数据等非真实样本文件。
 - write_json / write_jsonl：写出统计文件和 JSONL 文件。
 """
 
@@ -19,6 +20,7 @@ from typing import Any, Dict, Iterable, List, Sequence
 
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 AUDIO_GENERATOR_TOKENS = ("audiox", "foleycrafter", "hunyuan", "mmaudio")
+IGNORED_EXTRACTED_DIRS = {"__MACOSX"}
 
 SYSTEM_PROMPT = "You are an audio-video deepfake detector. Given an input video, answer only Real or Fake."
 BINARY_AUDIO_USER_PROMPT = (
@@ -39,6 +41,29 @@ def abs_path(path: Path) -> str:
     return str(path.expanduser().resolve(strict=False))
 
 
+def is_ignored_extracted_path(path: Path) -> bool:
+    """
+    函数功能：
+    - 判断解压目录中的路径是否属于非样本文件。
+
+    参数：
+    - path: 待检查的视频或目录路径。
+
+    返回：
+    - true 表示该路径应从 MVAD 样本扫描中跳过。
+
+    关键处理逻辑：
+    - macOS zip 常带有 __MACOSX/._* AppleDouble 资源叉文件，扩展名可能也是 .mp4，
+      但它们不是可解码视频，直接送入 ffmpeg 会出现 moov atom not found。
+    """
+    for part in path.parts:
+        if part in IGNORED_EXTRACTED_DIRS:
+            return True
+        if part.startswith("._"):
+            return True
+    return False
+
+
 def iter_video_files(root: Path) -> Iterable[Path]:
     """
     函数功能：
@@ -54,6 +79,8 @@ def iter_video_files(root: Path) -> Iterable[Path]:
     if not root.exists():
         return
     for path in sorted(root.rglob("*")):
+        if is_ignored_extracted_path(path):
+            continue
         if path.is_file() and path.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS:
             yield path
 

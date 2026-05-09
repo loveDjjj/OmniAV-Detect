@@ -59,6 +59,31 @@ class MvadPrepareTests(unittest.TestCase):
         self.assertEqual(first["meta"]["group_id"], second["meta"]["group_id"])
         self.assertNotEqual(first["meta"]["group_id"], direct["meta"]["group_id"])
 
+    def test_iter_video_files_skips_macos_resource_fork_files(self):
+        from mvad.common import iter_video_files
+
+        root = self.scratch / "unpacked"
+        real_video = root / "train" / "fake_fake" / "direct" / "Sora2" / "Sora2_videos_1.mp4"
+        resource_fork = (
+            root
+            / "train"
+            / "fake_fake"
+            / "direct"
+            / "Sora2"
+            / "Sora2_archive"
+            / "__MACOSX"
+            / "Sora2"
+            / "._Sora2_videos_1.mp4"
+        )
+        real_video.parent.mkdir(parents=True, exist_ok=True)
+        resource_fork.parent.mkdir(parents=True, exist_ok=True)
+        real_video.write_bytes(b"real video")
+        resource_fork.write_bytes(b"macos metadata")
+
+        paths = list(iter_video_files(root))
+
+        self.assertEqual(paths, [real_video])
+
     def test_group_aware_split_keeps_group_on_one_side(self):
         from mvad.build_index_and_split import group_aware_split
 

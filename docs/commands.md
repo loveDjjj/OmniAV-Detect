@@ -172,6 +172,18 @@ SOURCE_ROOT=/data/MVAD bash mvad/run_prepare_mvad.sh
 - JSONL 已显式包含 `audios`，后续训练必须关闭 `use_audio_in_video`。
 - 如果 zip 已经解压，可用 `SKIP_UNZIP=true`；如果音频已抽取，可用 `SKIP_AUDIO=true`。
 - 如果个别 zip 损坏，可用 `SKIP_BAD_ARCHIVES=true`，将坏包记录到 `mvad_processed/unpack_manifest.json` 并继续处理其他压缩包。
+- 扫描解压视频时会跳过 macOS zip 常见的 `__MACOSX` 和 `._*` 资源叉文件，避免把伪 `.mp4` 送入 ffmpeg。
+
+中断后续跑：
+
+```bash
+SOURCE_ROOT=/data/OneDay/MVAD SKIP_UNZIP=true bash mvad/run_prepare_mvad.sh
+```
+
+用途：
+
+- 解压已经完成、抽音频中途因坏样本或中断退出时，从现有解压目录重新构建 index 并继续抽音频。
+- 已经存在的 wav 默认不会重复抽取；只会补齐缺失音频并重写 JSONL。
 
 ## 评估 / 测试
 
