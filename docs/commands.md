@@ -171,6 +171,7 @@ SOURCE_ROOT=/data/MVAD bash mvad/run_prepare_mvad.sh
 - 解压和抽音频阶段会显示进度条。
 - JSONL 已显式包含 `audios`，后续训练必须关闭 `use_audio_in_video`。
 - 如果 zip 已经解压，可用 `SKIP_UNZIP=true`；如果音频已抽取，可用 `SKIP_AUDIO=true`。
+- 如果个别 zip 损坏，可用 `SKIP_BAD_ARCHIVES=true`，将坏包记录到 `mvad_processed/unpack_manifest.json` 并继续处理其他压缩包。
 
 ## 评估 / 测试
 

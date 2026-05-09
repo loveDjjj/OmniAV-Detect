@@ -31,6 +31,9 @@ fi
 if [[ "${SKIP_AUDIO:-false}" == "true" ]]; then
   EXTRA_ARGS+=(--skip_audio)
 fi
+if [[ "${SKIP_BAD_ARCHIVES:-false}" == "true" ]]; then
+  EXTRA_ARGS+=(--skip_bad_archives)
+fi
 if [[ "${DRY_RUN:-false}" == "true" ]]; then
   EXTRA_ARGS+=(--dry_run)
 fi

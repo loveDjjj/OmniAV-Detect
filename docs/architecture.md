@@ -69,7 +69,7 @@
 ### MVAD 独立预处理
 
 1. `mvad/run_prepare_mvad.sh` 调用 `python -m mvad.prepare_mvad`
-2. `unzip_archives` 递归解压公开 `train/**/*.zip`
+2. `unzip_archives` 递归解压公开 `train/**/*.zip`，可按需跳过坏包并写入 manifest
 3. `build_index_and_split` 扫描解压后视频，按目录推断 `real_real`、`real_fake`、`fake_real`、`fake_fake`
 4. 按 `group_id` 执行 internal train/val 划分，避免同源组跨 split
 5. `build_av_jsonl` 用 `ffmpeg` 抽取 16 kHz mono wav，并生成带 `audios` 字段的 Qwen JSONL

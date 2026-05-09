@@ -5,6 +5,7 @@
 主要内容：
 - find_archives：递归发现 zip 文件。
 - unpack_archives：解压 zip，记录每个压缩包状态。
+- handle_unpack_error：把坏包或空包错误写入 manifest，并按配置选择继续或中断。
 - main：命令行入口。
 """
 
@@ -109,11 +110,45 @@ def unpack_one_archive(
     }
 
 
+def handle_unpack_error(
+    archive_path: Path,
+    source_root: Path,
+    unpack_root: Path,
+    extractor: str,
+    error: BaseException,
+) -> Dict[str, Any]:
+    """
+    函数功能：
+    - 将单个坏包或异常压缩包转换为 manifest 行，供上层选择继续或中断。
+
+    参数：
+    - archive_path: 当前压缩包路径。
+    - source_root: 原始数据根目录。
+    - unpack_root: 解压输出根目录。
+    - extractor: 当前使用的解压器名称。
+    - error: 捕获到的异常对象。
+
+    返回：
+    - 状态为 `failed` 的 manifest 记录。
+    """
+    target_dir = archive_output_dir(archive_path, source_root, unpack_root)
+    return {
+        "archive_path": str(archive_path.resolve(strict=False)),
+        "output_dir": str(target_dir.resolve(strict=False)),
+        "status": "failed",
+        "video_count": 0,
+        "extractor": extractor,
+        "error_type": error.__class__.__name__,
+        "error": str(error),
+    }
+
+
 def unpack_archives(
     source_root: Path,
     unpack_root: Path,
     overwrite: bool = False,
     extractor: str = "7z",
+    skip_bad_archives: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     函数功能：
@@ -123,6 +158,7 @@ def unpack_archives(
     - source_root: MVAD 原始下载根目录。
     - unpack_root: 解压输出根目录。
     - overwrite: 是否覆盖已解压目录。
+    - skip_bad_archives: 为 True 时，单个压缩包失败只记录并继续。
 
     返回：
     - 每个 zip 的 manifest 记录列表。
@@ -134,7 +170,14 @@ def unpack_archives(
     progress = create_progress(total=len(archives), desc="unpack mvad zip", unit="zip")
     try:
         for archive_path in archives:
-            manifest.append(unpack_one_archive(archive_path, source_root, unpack_root, overwrite, extractor))
+            try:
+                manifest.append(unpack_one_archive(archive_path, source_root, unpack_root, overwrite, extractor))
+            except Exception as exc:
+                failed_row = handle_unpack_error(archive_path, source_root, unpack_root, extractor, exc)
+                manifest.append(failed_row)
+                if not skip_bad_archives:
+                    raise
+                logging.warning("Skipping bad archive: %s | %s", archive_path, exc)
             progress.update(1)
     finally:
         progress.close()
@@ -149,6 +192,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--manifest_path", default=None)
     parser.add_argument("--extractor", default="7z", help="Archive extractor executable, default 7z. Use zipfile for Python fallback.")
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--skip_bad_archives", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -156,7 +200,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     """解压 CLI 主流程。"""
     setup_logging()
     args = parse_args(argv)
-    manifest = unpack_archives(Path(args.source_root), Path(args.unpack_root), args.overwrite, args.extractor)
+    manifest = unpack_archives(
+        Path(args.source_root),
+        Path(args.unpack_root),
+        args.overwrite,
+        args.extractor,
+        args.skip_bad_archives,
+    )
     manifest_path = Path(args.manifest_path) if args.manifest_path else Path(args.unpack_root) / "unpack_manifest.json"
     write_json(manifest_path, manifest)
     logging.info("Wrote unpack manifest to %s", manifest_path)

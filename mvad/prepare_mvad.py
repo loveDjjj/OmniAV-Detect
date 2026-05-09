@@ -42,6 +42,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--skip_unzip", action="store_true")
     parser.add_argument("--skip_audio", action="store_true")
+    parser.add_argument("--skip_bad_archives", action="store_true")
     parser.add_argument("--dry_run", action="store_true")
     return parser.parse_args(argv)
 
@@ -56,8 +57,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     jsonl_root = Path(args.jsonl_root)
 
     if not args.skip_unzip:
-        manifest = unpack_archives(source_root, unpack_root, overwrite=args.overwrite, extractor=args.extractor)
+        manifest = unpack_archives(
+            source_root,
+            unpack_root,
+            overwrite=args.overwrite,
+            extractor=args.extractor,
+            skip_bad_archives=args.skip_bad_archives,
+        )
         write_json(work_root / "unpack_manifest.json", manifest)
+        failed_archives = [row for row in manifest if row.get("status") == "failed"]
+        if failed_archives:
+            logging.warning(
+                "MVAD unpack finished with %d failed archive(s). See %s for details.",
+                len(failed_archives),
+                work_root / "unpack_manifest.json",
+            )
     samples = build_samples(unpack_root)
     train, val = group_aware_split(samples, val_ratio=args.val_ratio, seed=args.seed)
     write_split_outputs(samples, train, val, work_root)

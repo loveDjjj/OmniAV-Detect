@@ -121,7 +121,7 @@ class MvadPrepareTests(unittest.TestCase):
         with zipfile.ZipFile(archive_path, "w") as archive:
             archive.writestr("talk001.mp4", b"video")
 
-        manifest = unpack_archives(source_root, self.scratch / "unpacked", overwrite=False)
+        manifest = unpack_archives(source_root, self.scratch / "unpacked", overwrite=False, extractor="zipfile")
 
         self.assertEqual(len(manifest), 1)
         self.assertEqual(manifest[0]["status"], "extracted")
@@ -150,6 +150,45 @@ class MvadPrepareTests(unittest.TestCase):
         self.assertEqual(command[0], "7z")
         self.assertIn("x", command)
         self.assertEqual(manifest[0]["extractor"], "7z")
+
+    def test_unzip_archives_can_skip_bad_archive_and_record_manifest(self):
+        from mvad.unzip_archives import unpack_archives
+
+        source_root = self.scratch / "raw"
+        good_dir = source_root / "train" / "real_real" / "talkvid"
+        bad_dir = source_root / "train" / "real_fake" / "openvid"
+        good_dir.mkdir(parents=True)
+        bad_dir.mkdir(parents=True)
+        good_archive = good_dir / "talkvid.zip"
+        bad_archive = bad_dir / "openvid_AudioX.zip"
+        good_archive.write_bytes(b"zip")
+        bad_archive.write_bytes(b"zip")
+
+        def fake_run(command, check, stdout, stderr, text):
+            archive_path = Path(command[-1])
+            target_arg = next(item for item in command if item.startswith("-o"))
+            target_dir = Path(target_arg[2:])
+            if archive_path.name == "openvid_AudioX.zip":
+                return mock.Mock(returncode=2, stdout="", stderr="Unexpected end of archive")
+            target_dir.mkdir(parents=True, exist_ok=True)
+            (target_dir / "talk001.mp4").write_bytes(b"video")
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            manifest = unpack_archives(
+                source_root,
+                self.scratch / "unpacked",
+                overwrite=False,
+                extractor="7z",
+                skip_bad_archives=True,
+            )
+
+        self.assertEqual(len(manifest), 2)
+        failed = [row for row in manifest if row["status"] == "failed"]
+        extracted = [row for row in manifest if row["status"] == "extracted"]
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(len(extracted), 1)
+        self.assertIn("Unexpected end of archive", failed[0]["error"])
 
 
 if __name__ == "__main__":
