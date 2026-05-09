@@ -17,7 +17,7 @@
 SOURCE_ROOT=/data/MVAD bash mvad/run_prepare_mvad.sh
 ```
 
-默认使用 `7z x` 解压 zip，并在解压、JSONL 构建和必要的抽音频阶段显示进度条。可通过 `EXTRACTOR=7z`、`FFMPEG=ffmpeg`、`FFPROBE=ffprobe` 覆盖命令。
+默认使用 `7z x` 解压 zip，并在解压、JSONL 构建和必要的抽音频阶段显示进度条。`build mvad jsonl` 表示写 JSONL，`extract embedded audio` 只统计真正调用 ffmpeg 的视频。可通过 `EXTRACTOR=7z`、`FFMPEG=ffmpeg`、`FFPROBE=ffprobe` 覆盖命令。
 
 音频处理规则：
 

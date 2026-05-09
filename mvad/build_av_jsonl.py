@@ -14,6 +14,7 @@ import argparse
 import json
 import logging
 import subprocess
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
@@ -90,7 +91,15 @@ def build_jsonl_records(
     """
     sample_list = list(samples)
     records = []
-    progress = create_progress(total=len(sample_list), desc="extract mvad audio", unit="video")
+    handling_counts = Counter(sample.get("audio_handling", "extract_from_video") for sample in sample_list)
+    logging.info(
+        "MVAD audio handling: paired_file=%d extract_from_video=%d unknown=%d",
+        handling_counts.get("paired_file", 0),
+        handling_counts.get("extract_from_video", 0),
+        sum(count for key, count in handling_counts.items() if key not in {"paired_file", "extract_from_video"}),
+    )
+    extraction_plan: List[tuple[Path, Path]] = []
+    build_progress = create_progress(total=len(sample_list), desc="build mvad jsonl", unit="sample")
     try:
         for sample in sample_list:
             video_path = Path(sample["video_path"]).expanduser().resolve(strict=False)
@@ -101,17 +110,20 @@ def build_jsonl_records(
                 audio_path = Path(sample["audio_path"]).expanduser().resolve(strict=False)
             else:
                 audio_path = output_audio_path(video_path, audio_root)
-            if (
-                audio_handling == "extract_from_video"
-                and not dry_run
-                and not skip_audio
-                and (overwrite or not audio_path.exists())
-            ):
-                extract_audio(ffmpeg, video_path, audio_path, sample_rate, audio_channels, overwrite)
+            if audio_handling == "extract_from_video" and not dry_run and not skip_audio and (overwrite or not audio_path.exists()):
+                extraction_plan.append((video_path, audio_path))
             records.append(make_binary_audio_record(sample, audio_path))
-            progress.update(1)
+            build_progress.update(1)
     finally:
-        progress.close()
+        build_progress.close()
+    if extraction_plan:
+        extract_progress = create_progress(total=len(extraction_plan), desc="extract embedded audio", unit="video")
+        try:
+            for video_path, audio_path in extraction_plan:
+                extract_audio(ffmpeg, video_path, audio_path, sample_rate, audio_channels, overwrite)
+                extract_progress.update(1)
+        finally:
+            extract_progress.close()
     return records
 
 

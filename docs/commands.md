@@ -168,7 +168,7 @@ SOURCE_ROOT=/data/MVAD bash mvad/run_prepare_mvad.sh
 
 - 当前 MVAD 公开数据只有 train，因此这是 internal validation baseline，不是论文官方 test 复现。
 - 默认使用 `7z x` 解压 zip；如果 7z 命令名不同，可设置 `EXTRACTOR=7za` 或 `EXTRACTOR=7zz`。
-- 解压、JSONL 构建和必要的抽音频阶段会显示进度条。
+- 解压、JSONL 构建和必要的抽音频阶段会显示进度条；`build mvad jsonl` 表示写 JSONL，`extract embedded audio` 只统计真正调用 ffmpeg 的视频。
 - JSONL 已显式包含 `audios`，后续训练必须关闭 `use_audio_in_video`。
 - MVAD 会优先按同目录同 stem 的 `.mp4 + .wav/.flac/...` 配对原始音频。
 - 如果同目录没有音频，脚本会用 `ffprobe` 判断视频是否有内嵌音轨；有音轨则抽到视频同目录同名 `.wav`。

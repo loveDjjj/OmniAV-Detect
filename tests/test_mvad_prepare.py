@@ -253,6 +253,38 @@ class MvadPrepareTests(unittest.TestCase):
         extract_mock.assert_called_once()
         self.assertEqual(records[0]["audios"], [str(audio_path.resolve())])
 
+    def test_build_records_logs_audio_handling_counts(self):
+        from mvad.build_av_jsonl import build_jsonl_records
+
+        paired_video = self.scratch / "paired.mp4"
+        paired_audio = self.scratch / "paired.wav"
+        embedded_video = self.scratch / "embedded.mp4"
+        embedded_audio = self.scratch / "embedded.wav"
+        paired_video.write_bytes(b"video")
+        paired_audio.write_bytes(b"audio")
+        embedded_video.write_bytes(b"video")
+        samples = [
+            {
+                "video_path": str(paired_video.resolve()),
+                "audio_path": str(paired_audio.resolve()),
+                "audio_handling": "paired_file",
+                "meta": {"dataset": "MVAD", "overall_label": "Fake"},
+            },
+            {
+                "video_path": str(embedded_video.resolve()),
+                "audio_path": str(embedded_audio.resolve()),
+                "audio_handling": "extract_from_video",
+                "meta": {"dataset": "MVAD", "overall_label": "Real"},
+            },
+        ]
+
+        with mock.patch("mvad.build_av_jsonl.extract_audio"), self.assertLogs(level="INFO") as logs:
+            build_jsonl_records(samples, self.scratch / "audio_cache")
+
+        message = "\n".join(logs.output)
+        self.assertIn("paired_file=1", message)
+        self.assertIn("extract_from_video=1", message)
+
     def test_unzip_archives_writes_manifest(self):
         from mvad.unzip_archives import unpack_archives
 
