@@ -30,6 +30,7 @@ def build_samples(
     unpack_root: Path,
     require_audio_pair: bool = False,
     ffprobe: str = "ffprobe",
+    ffprobe_workers: int = 1,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     函数功能：
@@ -44,6 +45,7 @@ def build_samples(
         unpack_root,
         require_audio_pair=require_audio_pair,
         ffprobe=ffprobe,
+        ffprobe_workers=ffprobe_workers,
     )
     samples.sort(key=lambda item: item["video_path"])
     missing_audio.sort(key=lambda item: item["video_path"])
@@ -159,6 +161,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--require_audio_pair", action="store_true")
     parser.add_argument("--ffprobe", default="ffprobe")
+    parser.add_argument("--ffprobe_workers", type=int, default=1)
     return parser.parse_args(argv)
 
 
@@ -170,6 +173,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         Path(args.unpack_root),
         require_audio_pair=args.require_audio_pair,
         ffprobe=args.ffprobe,
+        ffprobe_workers=args.ffprobe_workers,
     )
     train, val = group_aware_split(samples, args.val_ratio, args.seed)
     write_split_outputs(samples, train, val, Path(args.work_root), missing_audio=missing_audio)

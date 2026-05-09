@@ -38,6 +38,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--extractor", default="7z", help="Archive extractor executable, default 7z.")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
+    parser.add_argument("--ffprobe_workers", type=int, default=8)
+    parser.add_argument("--ffmpeg_workers", type=int, default=4)
     parser.add_argument("--sample_rate", type=int, default=16000)
     parser.add_argument("--audio_channels", type=int, default=1)
     parser.add_argument("--overwrite", action="store_true")
@@ -78,6 +80,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         unpack_root,
         require_audio_pair=not args.allow_extract_from_video,
         ffprobe=args.ffprobe,
+        ffprobe_workers=args.ffprobe_workers,
     )
     train, val = group_aware_split(samples, val_ratio=args.val_ratio, seed=args.seed)
     write_split_outputs(samples, train, val, work_root, missing_audio=missing_audio)
@@ -91,6 +94,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         args.overwrite,
         args.dry_run,
         args.skip_audio,
+        args.ffmpeg_workers,
     )
     build_split_jsonl(
         work_root / "mvad_val_index.jsonl",
@@ -102,6 +106,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         args.overwrite,
         args.dry_run,
         args.skip_audio,
+        args.ffmpeg_workers,
     )
     logging.info("Prepared MVAD JSONL under %s", jsonl_root)
     return 0

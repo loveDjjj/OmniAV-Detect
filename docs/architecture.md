@@ -73,9 +73,9 @@
 3. `build_index_and_split` 扫描解压后视频，按目录推断 `real_real`、`real_fake`、`fake_real`、`fake_fake`
 4. 按 `group_id` 执行 internal train/val 划分，避免同源组跨 split
 5. `pairing` 优先按同目录同 stem 的视频和音频文件配对
-6. 同目录找不到音频时，用 `ffprobe` 判断视频是否有内嵌音轨；有音轨则在同目录抽出同名 `.wav`
+6. 同目录找不到音频时，用可配置并发的 `ffprobe` 判断视频是否有内嵌音轨；有音轨则在同目录抽出同名 `.wav`
 7. 同目录音频和内嵌音轨都不存在时，样本写入 `missing_audio_pairs.jsonl`，不进入训练 JSONL
-8. `build_av_jsonl` 使用 index 中的原始音频路径或抽取目标路径写出显式 `audios`
+8. `build_av_jsonl` 使用 index 中的原始音频路径或抽取目标路径写出显式 `audios`，并可并发调用 `ffmpeg` 抽取内嵌音频
 9. 输出 `mvad_binary_train_with_audio.jsonl` 和 `mvad_binary_val_with_audio.jsonl`
 
 ### 并行评估

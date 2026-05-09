@@ -12,11 +12,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import subprocess
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from mvad.common import abs_path, iter_audio_files, normalized_stem
+from src.omniav_detect.evaluation.progress import create_progress
 
 
 def path_key(path: Path) -> str:
@@ -108,6 +110,7 @@ def attach_audio_pairs(
     unpack_root: Path,
     require_audio_pair: bool,
     ffprobe: str = "ffprobe",
+    ffprobe_workers: int = 1,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     函数功能：
@@ -118,6 +121,7 @@ def attach_audio_pairs(
     - unpack_root: MVAD 解压根目录。
     - require_audio_pair: true 时找不到音频配对的样本会进入缺失报告并被过滤。
     - ffprobe: 用于检测视频内嵌音轨的 ffprobe 可执行程序。
+    - ffprobe_workers: 并发执行 ffprobe 的 worker 数，适合大量无分离音频视频。
 
     返回：
     - 可用样本列表和缺失音频报告列表。
@@ -125,6 +129,7 @@ def attach_audio_pairs(
     audio_lookup = build_audio_lookup(unpack_root)
     paired_samples: List[Dict[str, Any]] = []
     missing_audio: List[Dict[str, Any]] = []
+    probe_candidates: List[Tuple[Dict[str, Any], Path]] = []
     for sample in samples:
         video_path = Path(sample["video_path"]).expanduser().resolve(strict=False)
         paired_audio = find_paired_audio(video_path, audio_lookup)
@@ -134,7 +139,30 @@ def attach_audio_pairs(
             enriched["audio_handling"] = "paired_file"
             paired_samples.append(enriched)
             continue
-        if video_has_audio_stream(ffprobe, video_path):
+        probe_candidates.append((sample, video_path))
+    probe_results: Dict[str, bool] = {}
+    workers = max(1, int(ffprobe_workers))
+    if probe_candidates:
+        progress = create_progress(total=len(probe_candidates), desc="probe embedded audio", unit="video")
+        try:
+            if workers == 1:
+                for _, video_path in probe_candidates:
+                    probe_results[abs_path(video_path)] = video_has_audio_stream(ffprobe, video_path)
+                    progress.update(1)
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    future_to_path = {
+                        executor.submit(video_has_audio_stream, ffprobe, video_path): video_path
+                        for _, video_path in probe_candidates
+                    }
+                    for future in as_completed(future_to_path):
+                        video_path = future_to_path[future]
+                        probe_results[abs_path(video_path)] = future.result()
+                        progress.update(1)
+        finally:
+            progress.close()
+    for sample, video_path in probe_candidates:
+        if probe_results.get(abs_path(video_path), False):
             enriched = dict(sample)
             enriched["audio_path"] = abs_path(video_path.with_suffix(".wav"))
             enriched["audio_handling"] = "extract_from_video"

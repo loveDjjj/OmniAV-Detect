@@ -15,6 +15,7 @@ import json
 import logging
 import subprocess
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
@@ -73,6 +74,7 @@ def build_jsonl_records(
     overwrite: bool = False,
     dry_run: bool = False,
     skip_audio: bool = False,
+    ffmpeg_workers: int = 1,
 ) -> List[Dict[str, Any]]:
     """
     函数功能：
@@ -85,6 +87,7 @@ def build_jsonl_records(
     - audio_root: 音频输出根目录。
     - dry_run: true 时只规划音频路径，不调用 ffmpeg。
     - skip_audio: true 时也不调用 ffmpeg，用于已抽取音频后的快速重建。
+    - ffmpeg_workers: 并发执行 ffmpeg 抽音频的 worker 数。
 
     返回：
     - JSONL 记录列表。
@@ -119,9 +122,20 @@ def build_jsonl_records(
     if extraction_plan:
         extract_progress = create_progress(total=len(extraction_plan), desc="extract embedded audio", unit="video")
         try:
-            for video_path, audio_path in extraction_plan:
-                extract_audio(ffmpeg, video_path, audio_path, sample_rate, audio_channels, overwrite)
-                extract_progress.update(1)
+            workers = max(1, int(ffmpeg_workers))
+            if workers == 1:
+                for video_path, audio_path in extraction_plan:
+                    extract_audio(ffmpeg, video_path, audio_path, sample_rate, audio_channels, overwrite)
+                    extract_progress.update(1)
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    futures = [
+                        executor.submit(extract_audio, ffmpeg, video_path, audio_path, sample_rate, audio_channels, overwrite)
+                        for video_path, audio_path in extraction_plan
+                    ]
+                    for future in as_completed(futures):
+                        future.result()
+                        extract_progress.update(1)
         finally:
             extract_progress.close()
     return records
@@ -137,6 +151,7 @@ def build_split_jsonl(
     overwrite: bool,
     dry_run: bool,
     skip_audio: bool,
+    ffmpeg_workers: int = 1,
 ) -> List[Dict[str, Any]]:
     """读取 index，生成并写出单个 split JSONL。"""
     records = build_jsonl_records(
@@ -148,6 +163,7 @@ def build_split_jsonl(
         overwrite=overwrite,
         dry_run=dry_run,
         skip_audio=skip_audio,
+        ffmpeg_workers=ffmpeg_workers,
     )
     write_jsonl(output_jsonl, records)
     return records
@@ -166,6 +182,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--dry_run", action="store_true")
     parser.add_argument("--skip_audio", action="store_true")
+    parser.add_argument("--ffmpeg_workers", type=int, default=1)
     return parser.parse_args(argv)
 
 
@@ -184,6 +201,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         args.overwrite,
         args.dry_run,
         args.skip_audio,
+        args.ffmpeg_workers,
     )
     build_split_jsonl(
         Path(args.val_index),
@@ -195,6 +213,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         args.overwrite,
         args.dry_run,
         args.skip_audio,
+        args.ffmpeg_workers,
     )
     logging.info("Wrote MVAD Qwen JSONL files to %s", jsonl_root)
     return 0

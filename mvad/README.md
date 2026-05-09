@@ -17,7 +17,7 @@
 SOURCE_ROOT=/data/MVAD bash mvad/run_prepare_mvad.sh
 ```
 
-默认使用 `7z x` 解压 zip，并在解压、JSONL 构建和必要的抽音频阶段显示进度条。`build mvad jsonl` 表示写 JSONL，`extract embedded audio` 只统计真正调用 ffmpeg 的视频。可通过 `EXTRACTOR=7z`、`FFMPEG=ffmpeg`、`FFPROBE=ffprobe` 覆盖命令。
+默认使用 `7z x` 解压 zip，并在解压、内嵌音轨检测、JSONL 构建和必要的抽音频阶段显示进度条。`probe embedded audio` 表示用 ffprobe 检测视频内嵌音轨，`build mvad jsonl` 表示写 JSONL，`extract embedded audio` 只统计真正调用 ffmpeg 的视频。可通过 `EXTRACTOR=7z`、`FFMPEG=ffmpeg`、`FFPROBE=ffprobe` 覆盖命令。
 
 音频处理规则：
 
@@ -44,11 +44,23 @@ SEED=42 \
 bash mvad/run_prepare_mvad.sh
 ```
 
+如果解压已完成，建议用并发参数续跑：
+
+```bash
+SOURCE_ROOT=/data/OneDay/MVAD \
+SKIP_UNZIP=true \
+FFPROBE_WORKERS=16 \
+FFMPEG_WORKERS=8 \
+bash mvad/run_prepare_mvad.sh
+```
+
 如果 zip 已经解压，只想重建划分和 JSONL：
 
 ```bash
 SKIP_UNZIP=true SKIP_AUDIO=true bash mvad/run_prepare_mvad.sh
 ```
+
+说明：`FFPROBE_WORKERS` 默认 `8`，`FFMPEG_WORKERS` 默认 `4`。如果服务器磁盘 IO 或 CPU 占用过高，优先降低 `FFMPEG_WORKERS`。
 
 ## Stage1 baseline 训练
 

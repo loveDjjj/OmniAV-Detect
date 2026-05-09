@@ -168,7 +168,8 @@ SOURCE_ROOT=/data/MVAD bash mvad/run_prepare_mvad.sh
 
 - 当前 MVAD 公开数据只有 train，因此这是 internal validation baseline，不是论文官方 test 复现。
 - 默认使用 `7z x` 解压 zip；如果 7z 命令名不同，可设置 `EXTRACTOR=7za` 或 `EXTRACTOR=7zz`。
-- 解压、JSONL 构建和必要的抽音频阶段会显示进度条；`build mvad jsonl` 表示写 JSONL，`extract embedded audio` 只统计真正调用 ffmpeg 的视频。
+- 解压、内嵌音轨检测、JSONL 构建和必要的抽音频阶段会显示进度条；`probe embedded audio` 表示用 ffprobe 检测视频内嵌音轨，`build mvad jsonl` 表示写 JSONL，`extract embedded audio` 只统计真正调用 ffmpeg 的视频。
+- 可用 `FFPROBE_WORKERS` 并发检测内嵌音轨，默认 `8`；可用 `FFMPEG_WORKERS` 并发抽取音频，默认 `4`。
 - JSONL 已显式包含 `audios`，后续训练必须关闭 `use_audio_in_video`。
 - MVAD 会优先按同目录同 stem 的 `.mp4 + .wav/.flac/...` 配对原始音频。
 - 如果同目录没有音频，脚本会用 `ffprobe` 判断视频是否有内嵌音轨；有音轨则抽到视频同目录同名 `.wav`。
@@ -183,10 +184,21 @@ SOURCE_ROOT=/data/MVAD bash mvad/run_prepare_mvad.sh
 SOURCE_ROOT=/data/OneDay/MVAD SKIP_UNZIP=true bash mvad/run_prepare_mvad.sh
 ```
 
+服务器并发续跑推荐：
+
+```bash
+SOURCE_ROOT=/data/OneDay/MVAD \
+SKIP_UNZIP=true \
+FFPROBE_WORKERS=16 \
+FFMPEG_WORKERS=8 \
+bash mvad/run_prepare_mvad.sh
+```
+
 用途：
 
 - 解压已经完成、抽音频中途因坏样本或中断退出时，从现有解压目录重新构建 index 并继续抽音频。
 - 已经存在的 wav 默认不会重复抽取；只会补齐缺失音频并重写 JSONL。
+- 如果加 `OVERWRITE=true`，已有的内嵌音频 wav 也会重新抽取，耗时会明显增加。
 
 查看缺失音频样本：
 

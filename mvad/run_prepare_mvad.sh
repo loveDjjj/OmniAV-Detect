@@ -20,6 +20,8 @@ VAL_RATIO="${VAL_RATIO:-0.1}"
 SEED="${SEED:-42}"
 FFMPEG="${FFMPEG:-ffmpeg}"
 FFPROBE="${FFPROBE:-ffprobe}"
+FFPROBE_WORKERS="${FFPROBE_WORKERS:-8}"
+FFMPEG_WORKERS="${FFMPEG_WORKERS:-4}"
 EXTRACTOR="${EXTRACTOR:-7z}"
 
 EXTRA_ARGS=()
@@ -54,4 +56,6 @@ python -m mvad.prepare_mvad \
   --extractor "${EXTRACTOR}" \
   --ffmpeg "${FFMPEG}" \
   --ffprobe "${FFPROBE}" \
+  --ffprobe_workers "${FFPROBE_WORKERS}" \
+  --ffmpeg_workers "${FFMPEG_WORKERS}" \
   "${EXTRA_ARGS[@]}"
