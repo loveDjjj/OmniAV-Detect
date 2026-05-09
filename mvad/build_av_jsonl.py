@@ -97,6 +97,8 @@ def build_jsonl_records(
             audio_handling = sample.get("audio_handling", "extract_from_video")
             if sample.get("audio_path") and audio_handling == "paired_file":
                 audio_path = Path(sample["audio_path"]).expanduser().resolve(strict=False)
+            elif sample.get("audio_path") and audio_handling == "extract_from_video":
+                audio_path = Path(sample["audio_path"]).expanduser().resolve(strict=False)
             else:
                 audio_path = output_audio_path(video_path, audio_root)
             if (

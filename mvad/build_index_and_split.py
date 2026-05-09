@@ -26,7 +26,11 @@ def setup_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
 
-def build_samples(unpack_root: Path, require_audio_pair: bool = False) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def build_samples(
+    unpack_root: Path,
+    require_audio_pair: bool = False,
+    ffprobe: str = "ffprobe",
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     函数功能：
     - 扫描解压目录并构造 MVAD 样本列表。
@@ -35,7 +39,12 @@ def build_samples(unpack_root: Path, require_audio_pair: bool = False) -> Tuple[
     raw_samples = [parse_video_sample(path, unpack_root) for path in iter_video_files(unpack_root)]
     if not raw_samples:
         raise ValueError(f"No videos found under {unpack_root}")
-    samples, missing_audio = attach_audio_pairs(raw_samples, unpack_root, require_audio_pair=require_audio_pair)
+    samples, missing_audio = attach_audio_pairs(
+        raw_samples,
+        unpack_root,
+        require_audio_pair=require_audio_pair,
+        ffprobe=ffprobe,
+    )
     samples.sort(key=lambda item: item["video_path"])
     missing_audio.sort(key=lambda item: item["video_path"])
     return samples, missing_audio
@@ -149,6 +158,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--val_ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--require_audio_pair", action="store_true")
+    parser.add_argument("--ffprobe", default="ffprobe")
     return parser.parse_args(argv)
 
 
@@ -156,7 +166,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     """索引和划分 CLI 主流程。"""
     setup_logging()
     args = parse_args(argv)
-    samples, missing_audio = build_samples(Path(args.unpack_root), require_audio_pair=args.require_audio_pair)
+    samples, missing_audio = build_samples(
+        Path(args.unpack_root),
+        require_audio_pair=args.require_audio_pair,
+        ffprobe=args.ffprobe,
+    )
     train, val = group_aware_split(samples, args.val_ratio, args.seed)
     write_split_outputs(samples, train, val, Path(args.work_root), missing_audio=missing_audio)
     logging.info("Built MVAD split: train=%d val=%d missing_audio=%d", len(train), len(val), len(missing_audio))

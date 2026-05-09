@@ -264,12 +264,14 @@ def split_counts(samples: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """统计样本标签和模态分布。"""
     labels = Counter(sample["meta"]["overall_label"] for sample in samples)
     modalities = Counter(sample["meta"]["modality_type"] for sample in samples)
+    audio_handling = Counter(sample.get("audio_handling", "unknown") for sample in samples)
     groups = {sample["meta"]["group_id"] for sample in samples}
     return {
         "count": len(samples),
         "group_count": len(groups),
         "label_distribution": dict(sorted(labels.items())),
         "modality_type_distribution": dict(sorted(modalities.items())),
+        "audio_handling_distribution": dict(sorted(audio_handling.items())),
     }
 
 

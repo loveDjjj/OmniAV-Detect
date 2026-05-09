@@ -17,13 +17,14 @@
 SOURCE_ROOT=/data/MVAD bash mvad/run_prepare_mvad.sh
 ```
 
-默认使用 `7z x` 解压 zip，并在解压、配对和必要的抽音频阶段显示进度条。可通过 `EXTRACTOR=7z`、`FFMPEG=ffmpeg` 覆盖命令。
+默认使用 `7z x` 解压 zip，并在解压、JSONL 构建和必要的抽音频阶段显示进度条。可通过 `EXTRACTOR=7z`、`FFMPEG=ffmpeg`、`FFPROBE=ffprobe` 覆盖命令。
 
 音频处理规则：
 
-- 优先按 MVAD 原始目录中的 `videos/audios` 或 `video/audio` 配对音视频。
-- 找不到音频配对的样本写入 `mvad_processed/missing_audio_pairs.jsonl`，默认不进入训练 JSONL。
-- 不给无音轨视频生成静音音频；如果确认某批样本是内嵌音频 mp4，可设置 `ALLOW_EXTRACT_FROM_VIDEO=true`。
+- 优先按同目录同 stem 的视频和音频文件配对，例如 `video_jimeng_1.mp4` + `video_jimeng_1.wav`。
+- 同目录没有音频时，用 `ffprobe` 检测视频是否有内嵌音轨；有音轨则抽到视频同目录同名 `.wav`。
+- 同目录音频和内嵌音轨都不存在的样本写入 `mvad_processed/missing_audio_pairs.jsonl`，不进入训练 JSONL。
+- 不给无音轨视频生成静音音频。
 
 默认输出：
 

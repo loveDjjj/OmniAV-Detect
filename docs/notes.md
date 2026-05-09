@@ -22,7 +22,7 @@
 - 新增 `mvad/run_prepare_mvad.sh` 和 `mvad/train_stage1_MVAD.sh`，用于一键预处理和 stage1 LoRA baseline 训练。
 - 新增 `skip_bad_archives` / `SKIP_BAD_ARCHIVES=true` 机制，允许单个坏 zip 记录到 `unpack_manifest.json` 后跳过并继续处理后续压缩包。
 - 修复 macOS zip 资源叉文件误入样本扫描的问题，`__MACOSX` 和 `._*` 伪 `.mp4` 会被跳过，避免 ffmpeg 报 `moov atom not found`。
-- 新增 MVAD 分离音视频配对逻辑，优先按 `videos/audios` 或 `video/audio` 目录配对原始音频；找不到音频的样本写入 `missing_audio_pairs.jsonl`，默认不补静音也不进入训练 JSONL。
+- 新增 MVAD 音视频配对逻辑，优先按同目录同 stem 的视频和音频文件配对；同目录没有音频时用 `ffprobe` 检测视频内嵌音轨并抽到同目录同名 `.wav`；仍找不到音频的样本写入 `missing_audio_pairs.jsonl`，不补静音也不进入训练 JSONL。
 - 更新 README、架构和命令文档，说明 MVAD 当前只能作为 public train-only internal validation baseline。
 
 ## 验证

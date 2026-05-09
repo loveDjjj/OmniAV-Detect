@@ -84,7 +84,7 @@ class MvadPrepareTests(unittest.TestCase):
 
         self.assertEqual(paths, [real_video])
 
-    def test_build_samples_pairs_separate_video_and_audio_dirs(self):
+    def test_build_samples_pairs_same_directory_audio_file(self):
         from mvad.build_index_and_split import build_samples
 
         root = self.scratch / "unpacked"
@@ -95,12 +95,10 @@ class MvadPrepareTests(unittest.TestCase):
             / "internvid"
             / "internvid_AudioX"
             / "internvid_AudioX"
-            / "videos"
-            / "clip_001.mp4"
+            / "video_internvid_AudioX_1.mp4"
         )
-        audio_path = video_path.parent.parent / "audios" / "clip_001.wav"
+        audio_path = video_path.with_suffix(".wav")
         video_path.parent.mkdir(parents=True, exist_ok=True)
-        audio_path.parent.mkdir(parents=True, exist_ok=True)
         video_path.write_bytes(b"video")
         audio_path.write_bytes(b"audio")
 
@@ -111,7 +109,24 @@ class MvadPrepareTests(unittest.TestCase):
         self.assertEqual(Path(samples[0]["audio_path"]), audio_path.resolve())
         self.assertEqual(samples[0]["audio_handling"], "paired_file")
 
-    def test_build_samples_reports_video_without_audio_pair(self):
+    def test_build_samples_marks_video_for_extraction_when_it_has_embedded_audio(self):
+        from mvad.build_index_and_split import build_samples
+
+        root = self.scratch / "unpacked"
+        video_path = root / "train" / "real_real" / "HarmonySet" / "video_HarmonySet_1.mp4"
+        video_path.parent.mkdir(parents=True, exist_ok=True)
+        video_path.write_bytes(b"video")
+
+        with mock.patch("mvad.pairing.video_has_audio_stream", return_value=True) as probe_mock:
+            samples, missing = build_samples(root, require_audio_pair=True, ffprobe="ffprobe")
+
+        self.assertEqual(len(samples), 1)
+        self.assertFalse(missing)
+        self.assertEqual(samples[0]["audio_handling"], "extract_from_video")
+        self.assertEqual(Path(samples[0]["audio_path"]), video_path.with_suffix(".wav").resolve())
+        probe_mock.assert_called_once()
+
+    def test_build_samples_reports_video_without_any_audio(self):
         from mvad.build_index_and_split import build_samples
 
         root = self.scratch / "unpacked"
@@ -119,12 +134,13 @@ class MvadPrepareTests(unittest.TestCase):
         video_path.parent.mkdir(parents=True, exist_ok=True)
         video_path.write_bytes(b"video")
 
-        samples, missing = build_samples(root, require_audio_pair=True)
+        with mock.patch("mvad.pairing.video_has_audio_stream", return_value=False):
+            samples, missing = build_samples(root, require_audio_pair=True, ffprobe="ffprobe")
 
         self.assertEqual(samples, [])
         self.assertEqual(len(missing), 1)
         self.assertEqual(Path(missing[0]["video_path"]), video_path.resolve())
-        self.assertEqual(missing[0]["reason"], "missing_audio_pair")
+        self.assertEqual(missing[0]["reason"], "missing_audio")
 
     def test_group_aware_split_keeps_group_on_one_side(self):
         from mvad.build_index_and_split import group_aware_split
@@ -207,6 +223,34 @@ class MvadPrepareTests(unittest.TestCase):
             records = build_jsonl_records(samples, self.scratch / "audio_cache")
 
         extract_mock.assert_not_called()
+        self.assertEqual(records[0]["audios"], [str(audio_path.resolve())])
+
+    def test_build_records_extracts_embedded_audio_to_declared_path(self):
+        from mvad.build_av_jsonl import build_jsonl_records
+
+        video_path = self.scratch / "video_HarmonySet_1.mp4"
+        audio_path = self.scratch / "video_HarmonySet_1.wav"
+        video_path.write_bytes(b"video")
+        samples = [
+            {
+                "video_path": str(video_path.resolve()),
+                "audio_path": str(audio_path.resolve()),
+                "audio_handling": "extract_from_video",
+                "meta": {
+                    "dataset": "MVAD",
+                    "overall_label": "Real",
+                    "video_label": "Real",
+                    "audio_label": "Real",
+                    "modality_type": "R-R",
+                    "relative_path": "train/real_real/HarmonySet/video_HarmonySet_1.mp4",
+                },
+            }
+        ]
+
+        with mock.patch("mvad.build_av_jsonl.extract_audio") as extract_mock:
+            records = build_jsonl_records(samples, self.scratch / "audio_cache")
+
+        extract_mock.assert_called_once()
         self.assertEqual(records[0]["audios"], [str(audio_path.resolve())])
 
     def test_unzip_archives_writes_manifest(self):

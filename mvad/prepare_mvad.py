@@ -37,6 +37,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--extractor", default="7z", help="Archive extractor executable, default 7z.")
     parser.add_argument("--ffmpeg", default="ffmpeg")
+    parser.add_argument("--ffprobe", default="ffprobe")
     parser.add_argument("--sample_rate", type=int, default=16000)
     parser.add_argument("--audio_channels", type=int, default=1)
     parser.add_argument("--overwrite", action="store_true")
@@ -73,7 +74,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 len(failed_archives),
                 work_root / "unpack_manifest.json",
             )
-    samples, missing_audio = build_samples(unpack_root, require_audio_pair=not args.allow_extract_from_video)
+    samples, missing_audio = build_samples(
+        unpack_root,
+        require_audio_pair=not args.allow_extract_from_video,
+        ffprobe=args.ffprobe,
+    )
     train, val = group_aware_split(samples, val_ratio=args.val_ratio, seed=args.seed)
     write_split_outputs(samples, train, val, work_root, missing_audio=missing_audio)
     build_split_jsonl(
