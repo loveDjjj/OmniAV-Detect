@@ -74,3 +74,5 @@ bash mvad/train_stage1_MVAD.sh
 - 输出：`/data/OneDay/OmniAV-Detect/outputs/stage1_qwen2_5_omni_mvad_binary_audio_explicit`
 
 由于 JSONL 已经写入 `audios` 字段，训练脚本会显式关闭 `USE_AUDIO_IN_VIDEO` / `use_audio_in_video`。
+
+训练默认跑 2 个 epoch，并设置 `--split_dataset_ratio 0`、`--eval_strategy no`，不会从训练集切出验证集，也不会在训练过程中跑 val。

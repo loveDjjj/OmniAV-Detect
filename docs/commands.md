@@ -498,6 +498,7 @@ bash mvad/train_stage1_MVAD.sh
 备注：
 
 - 脚本显式设置 `USE_AUDIO_IN_VIDEO=False` 和 `use_audio_in_video=False`。
+- 脚本训练 2 个 epoch，并设置 `--split_dataset_ratio 0`、`--eval_strategy no`，不会从训练集切验证集，也不会在训练中跑 val。
 - 该训练结果只对应 MVAD public train-only internal split，不应表述为官方 test 结果。
 
 ### 顺序执行两个数据集的 stage1 -> stage2 训练

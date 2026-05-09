@@ -41,3 +41,4 @@ audio_cache/
 
 # Keep source, configs, docs, scripts, tests, and requirements tracked.
 # 待确认：`datasets/` 当前保存下载辅助脚本，不整体忽略；若后续放入真实数据集，应改为只保留脚本或 README。
+mvad/dataset/

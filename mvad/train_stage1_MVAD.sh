@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # 本脚本功能：
-# - 使用 MVAD 显式 audios JSONL 训练 Qwen2.5-Omni stage1 LoRA baseline。
+# - 使用 MVAD 显式 audios JSONL 训练 Qwen2.5-Omni stage1 LoRA baseline；
+# - 训练 2 个 epoch，并显式关闭验证集划分和训练中评估。
 #
 # 使用方式：
 # - bash mvad/train_stage1_MVAD.sh
@@ -28,6 +29,7 @@ NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 swift sft \
   --model_type qwen2_5_omni \
   --tuner_type lora \
   --dataset "${DATASET_PATH}" \
+  --split_dataset_ratio 0 \
   --torch_dtype bfloat16 \
   --num_train_epochs 2 \
   --per_device_train_batch_size 2 \
@@ -36,6 +38,7 @@ NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 swift sft \
   --dataloader_num_workers 8 \
   --learning_rate 1e-5 \
   --logging_steps 10 \
+  --eval_strategy no \
   --save_steps 100 \
   --save_total_limit 2 \
   --output_dir "${OUTPUT_DIR}"
