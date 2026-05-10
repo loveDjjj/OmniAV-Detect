@@ -40,6 +40,7 @@ docs/                         # 命令、架构、记录
 - `scripts/extract_audio_and_build_av_jsonl.py`：从已有视频 JSONL 批量抽取音频，并生成带 `audios` 字段的新 JSONL。
 - `mvad/prepare_mvad.py`：MVAD 专用一体化预处理入口，生成 internal train/val 显式音频 JSONL。
 - `mvad/train_stage1_MVAD.sh`：MVAD 显式音频 stage1 LoRA baseline 训练脚本。
+- `mvad/train_stage1_MVAD_Qwen3Omni30BThinking.sh`：MVAD 显式音频 Qwen3-Omni-30B-A3B-Thinking stage1 LoRA 尝试训练脚本。
 - `src/omniav_detect/evaluation/batch_runner.py`：按 YAML 调度并行或 vLLM 批量评估。
 - `src/omniav_detect/evaluation/parallel_runner.py`：多 GPU JSONL 分片、worker 调度、预测合并和指标重算。
 - `src/omniav_detect/evaluation/binary_logits_vllm.py`：vLLM 后端单次评估主流程，由批量入口调用。

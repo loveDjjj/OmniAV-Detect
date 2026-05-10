@@ -25,7 +25,8 @@
 - 新增 MVAD 音视频配对逻辑，优先按同目录同 stem 的视频和音频文件配对；同目录没有音频时用 `ffprobe` 检测视频内嵌音轨并抽到同目录同名 `.wav`；仍找不到音频的样本写入 `missing_audio_pairs.jsonl`，不补静音也不进入训练 JSONL。
 - MVAD 内嵌音轨检测和抽音频支持并发，`FFPROBE_WORKERS` 控制 ffprobe 检测并发，`FFMPEG_WORKERS` 控制 ffmpeg 抽取并发。
 - MVAD 进度条拆分为 `probe embedded audio`、`build mvad jsonl` 和 `extract embedded audio`，并打印 `paired_file` / `extract_from_video` 统计。
-- MVAD stage1 训练脚本参考 FakeAVCeleb stage1 LoRA 配置，训练 2 个 epoch，并通过 `--split_dataset_ratio 0`、`--eval_strategy no` 明确不跑验证集。
+- MVAD stage1 训练脚本参考 FakeAVCeleb stage1 LoRA 配置，训练 2 个 epoch，并通过 `--split_dataset_ratio 0`、`--eval_strategy no` 明确不跑验证集；默认限制 `FPS=1.0`、`FPS_MAX_FRAMES=32` 并把 `MAX_LENGTH` 提高到 4096，避免 audio-video 样本因序列过长在数据展示阶段被过滤。
+- 新增 `mvad/train_stage1_MVAD_Qwen3Omni30BThinking.sh`，用于尝试 Qwen3-Omni-30B-A3B-Thinking 的 MVAD stage1 LoRA；默认模型路径为 `/data/OneDay/models/Qwen3-Omni-30B-A3B-Thinking`，并使用更保守的视频帧数设置。
 - 更新 README、架构和命令文档，说明 MVAD 当前只能作为 public train-only internal validation baseline。
 
 ## 验证

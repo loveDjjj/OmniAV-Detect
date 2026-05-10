@@ -76,3 +76,15 @@ bash mvad/train_stage1_MVAD.sh
 由于 JSONL 已经写入 `audios` 字段，训练脚本会显式关闭 `USE_AUDIO_IN_VIDEO` / `use_audio_in_video`。
 
 训练默认跑 2 个 epoch，并设置 `--split_dataset_ratio 0`、`--eval_strategy no`，不会从训练集切出验证集，也不会在训练过程中跑 val。
+
+MVAD 样本包含视频和显式音频，训练脚本默认限制 `FPS=1.0`、`FPS_MAX_FRAMES=32`，并使用 `MAX_LENGTH=4096`、`PER_DEVICE_TRAIN_BATCH_SIZE=1`、`GRADIENT_ACCUMULATION_STEPS=32`。如果仍然出现 `Failed to retrieve the dataset`，优先继续增大 `MAX_LENGTH` 或降低 `FPS_MAX_FRAMES`。
+
+## Qwen3-Omni-30B-A3B-Thinking 训练尝试
+
+```bash
+bash mvad/train_stage1_MVAD_Qwen3Omni30BThinking.sh
+```
+
+该脚本默认模型路径为 `/data/OneDay/models/Qwen3-Omni-30B-A3B-Thinking`，使用 `--model_type qwen3_omni`，并继续关闭 `use_audio_in_video` 和训练中验证集。
+
+注意：Qwen3-Omni-30B-A3B-Thinking 在普通 `swift sft` DDP LoRA 下可能仍会 OOM；脚本默认已经把 `FPS` 降到 `0.5`、`FPS_MAX_FRAMES` 限制到 `16`。如果仍无法启动，需要考虑 Megatron-SWIFT / 张量并行或更低比特训练方案。

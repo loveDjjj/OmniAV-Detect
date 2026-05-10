@@ -499,7 +499,31 @@ bash mvad/train_stage1_MVAD.sh
 
 - 脚本显式设置 `USE_AUDIO_IN_VIDEO=False` 和 `use_audio_in_video=False`。
 - 脚本训练 2 个 epoch，并设置 `--split_dataset_ratio 0`、`--eval_strategy no`，不会从训练集切验证集，也不会在训练中跑 val。
+- MVAD 样本包含视频和显式音频，脚本默认限制 `FPS=1.0`、`FPS_MAX_FRAMES=32`，并使用 `MAX_LENGTH=4096`、`PER_DEVICE_TRAIN_BATCH_SIZE=1`、`GRADIENT_ACCUMULATION_STEPS=32`，避免首条样本因 `max_length` 过小被过滤。
 - 该训练结果只对应 MVAD public train-only internal split，不应表述为官方 test 结果。
+
+### MVAD: Qwen3-Omni-30B-A3B-Thinking stage1 显式 audios 训练
+
+用途：使用同一份 MVAD internal train JSONL，尝试运行 Qwen3-Omni-30B-A3B-Thinking 的 stage1 LoRA 训练。
+
+```bash
+bash mvad/train_stage1_MVAD_Qwen3Omni30BThinking.sh
+```
+
+输入：
+
+- `/data/OneDay/models/Qwen3-Omni-30B-A3B-Thinking`
+- `/data/OneDay/OmniAV-Detect/data/swift_sft/mvad/mvad_binary_train_with_audio.jsonl`
+
+输出：
+
+- `/data/OneDay/OmniAV-Detect/outputs/stage1_qwen3_omni_30b_a3b_thinking_mvad_binary_audio_explicit`
+
+备注：
+
+- 脚本使用 `--model_type qwen3_omni`，并同样关闭 `use_audio_in_video`、关闭 val。
+- 默认限制更保守：`FPS=0.5`、`FPS_MAX_FRAMES=16`、`PER_DEVICE_TRAIN_BATCH_SIZE=1`。
+- Qwen3-Omni-30B-A3B-Thinking 在普通 `swift sft` DDP LoRA 下可能仍会 OOM；如果 2x48GB 显存无法启动，需要改用 Megatron-SWIFT / 张量并行或更低比特方案。
 
 ### 顺序执行两个数据集的 stage1 -> stage2 训练
 
