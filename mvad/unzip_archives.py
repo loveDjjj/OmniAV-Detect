@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from mvad.common import SUPPORTED_VIDEO_EXTENSIONS, write_json
-from src.omniav_detect.evaluation.progress import create_progress
+from mvad.progress import create_progress
 
 
 def setup_logging() -> None:

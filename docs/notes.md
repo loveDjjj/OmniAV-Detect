@@ -1,46 +1,44 @@
 # Notes
 
-## 需求
+## 当前定位
 
-新增独立 `mvad/` 目录，实现 MVAD 公开 train 数据的 zip 解压、音频抽取、group-aware train/val 划分、Qwen2.5-Omni JSONL 生成，以及 stage1 baseline 训练 bash 命令。
+本分支已裁剪为 MVAD-only 项目，只保留 MVAD 数据预处理、显式 audio-video JSONL 生成、Qwen Omni 训练脚本和对应测试/文档。
 
-## 修改文件
+## 保留内容
 
-- mvad/
-- tests/test_mvad_prepare.py
-- README.md
-- docs/architecture.md
-- docs/commands.md
-- docs/notes.md
-- docs/logs/2026-05.md
+- `mvad/`：MVAD 预处理与训练入口。
+- `docs/`：MVAD 架构、命令、记录和参考文档。
+- `tests/test_mvad_prepare.py`：MVAD 预处理单测。
+- `README.md`、`AGENTS.md`、`.gitignore`、`requirements.txt`。
 
-## 修改内容
+## 移除内容
 
-- 新增 MVAD 独立预处理包，默认使用 `7z x` 解压 zip，支持扫描视频、映射四类模态标签、构造 group_id、按 group-aware 规则划分 internal train/val。
-- 新增显式音频 JSONL 生成逻辑，调用 ffmpeg 抽取 16 kHz mono wav，并生成 `mvad_binary_train_with_audio.jsonl` / `mvad_binary_val_with_audio.jsonl`。
-- zip 解压和音频抽取阶段均增加 tqdm 进度条。
-- 新增 `mvad/run_prepare_mvad.sh` 和 `mvad/train_stage1_MVAD.sh`，用于一键预处理和 stage1 LoRA baseline 训练。
-- 新增 `skip_bad_archives` / `SKIP_BAD_ARCHIVES=true` 机制，允许单个坏 zip 记录到 `unpack_manifest.json` 后跳过并继续处理后续压缩包。
-- 修复 macOS zip 资源叉文件误入样本扫描的问题，`__MACOSX` 和 `._*` 伪 `.mp4` 会被跳过，避免 ffmpeg 报 `moov atom not found`。
-- 新增 MVAD 音视频配对逻辑，优先按同目录同 stem 的视频和音频文件配对；同目录没有音频时用 `ffprobe` 检测视频内嵌音轨并抽到同目录同名 `.wav`；仍找不到音频的样本写入 `missing_audio_pairs.jsonl`，不补静音也不进入训练 JSONL。
-- MVAD 内嵌音轨检测和抽音频支持并发，`FFPROBE_WORKERS` 控制 ffprobe 检测并发，`FFMPEG_WORKERS` 控制 ffmpeg 抽取并发。
-- MVAD 进度条拆分为 `probe embedded audio`、`build mvad jsonl` 和 `extract embedded audio`，并打印 `paired_file` / `extract_from_video` 统计。
-- MVAD stage1 训练脚本参考 FakeAVCeleb stage1 LoRA 配置，训练 2 个 epoch，并通过 `--split_dataset_ratio 0`、`--eval_strategy no` 明确不跑验证集；默认限制 `FPS=1.0`、`FPS_MAX_FRAMES=32` 并把 `MAX_LENGTH` 提高到 4096，避免 audio-video 样本因序列过长在数据展示阶段被过滤。
-- 新增 `mvad/train_stage1_MVAD_Qwen3Omni30BThinking.sh`，用于尝试 Qwen3-Omni-30B-A3B-Thinking 的 MVAD stage1 LoRA；默认模型路径为 `/data/OneDay/models/Qwen3-Omni-30B-A3B-Thinking`，并使用更保守的视频帧数设置。
-- 更新 README、架构和命令文档，说明 MVAD 当前只能作为 public train-only internal validation baseline。
+- FakeAVCeleb / MAVOS-DD 数据准备配置和脚本。
+- Qwen binary eval 批量评估代码。
+- 旧 reports 和非 MVAD 训练脚本。
+- 原 `src/omniav_detect` 包。
+
+## 当前 MVAD 功能
+
+- 默认用 `7z x` 解压 zip。
+- 跳过 macOS `__MACOSX` 和 `._*` 资源叉文件。
+- 支持同目录同 stem 音视频配对。
+- 同目录无音频时用并发 `ffprobe` 检测内嵌音轨。
+- 内嵌音轨用并发 `ffmpeg` 抽到同目录 `.wav`。
+- 无音频样本写入 `missing_audio_pairs.jsonl`，不进入训练 JSONL。
+- 按 `group_id` 做 train/val 划分，避免同源组泄漏。
+- 输出 Qwen Omni / ms-swift 显式 `audios` JSONL。
+
+## 训练入口
+
+- `mvad/train_stage1_MVAD.sh`：Qwen2.5-Omni-7B LoRA baseline。
+- `mvad/train_stage1_MVAD_Qwen3Omni30BThinking.sh`：Qwen3-Omni-30B-A3B-Thinking LoRA 尝试。
+
+两个训练脚本都关闭 `use_audio_in_video`，避免 JSONL `audios` 和视频内音频重复输入。
 
 ## 验证
 
 ```powershell
 python -B tests\test_mvad_prepare.py -v
-python -B -m py_compile mvad\common.py mvad\unzip_archives.py mvad\build_index_and_split.py mvad\build_av_jsonl.py mvad\prepare_mvad.py
-bash -n mvad/run_prepare_mvad.sh
-bash -n mvad/train_stage1_MVAD.sh
+python -B -m py_compile mvad\common.py mvad\progress.py mvad\unzip_archives.py mvad\pairing.py mvad\build_index_and_split.py mvad\build_av_jsonl.py mvad\prepare_mvad.py
 ```
-
-结果：通过。补充运行了临时 zip fixture 的 `python -m mvad.prepare_mvad --dry_run --extractor 7z`，已生成 train/val JSONL、index 和 split stats，manifest 记录 `extractor: 7z`；坏包跳过场景已由新增单测覆盖。`tests/test_project_structure.py` 当前失败在已有 `src/omniav_detect/data/fakeavceleb.py`、`src/omniav_detect/evaluation/batch_runner.py`、`src/omniav_detect/evaluation/parallel_runner.py` 超过 500 行，非本次新增 `mvad/` 代码导致。
-
-## Git
-
-- branch: `feat-mvad-preprocess`
-- commit: `fix: allow mvad to skip bad archives`

@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from mvad.common import make_binary_audio_record, output_audio_path, write_jsonl
-from src.omniav_detect.evaluation.progress import create_progress
+from mvad.progress import create_progress
 
 
 def setup_logging() -> None:

@@ -1,30 +1,10 @@
-# Core model / training
-torch
-transformers
-peft
-ms-swift
-
-# Qwen2.5-Omni multimodal preprocessing
-qwen-omni-utils
-
-# Dataset loading / download
-datasets
-huggingface_hub
-
-# Config
-pyyaml
+# Core MVAD preprocessing
 tqdm
 
-# Metrics
-scikit-learn
-
-# vLLM backend (optional)
-vllm
-
-# vLLM Qwen2-VL video preprocessing
+# Training with Qwen Omni via ms-swift
+ms-swift
+qwen-omni-utils
 qwen-vl-utils
 
-# Notes
-# 版本号待确认；当前文件只列出仓库代码和命令中能确认需要的依赖。
-# 服务器上的 torch / transformers / peft / ms-swift 版本应以实际训练环境为准。
-# 可选：安装 matplotlib 后，评估可视化会额外输出 PNG；未安装时仍会输出 CSV/HTML。
+# Optional model/runtime dependencies are managed by the server conda environment.
+# Keep torch / transformers / peft versions aligned with the installed ms-swift stack.

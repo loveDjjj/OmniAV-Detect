@@ -1,111 +1,102 @@
-# OmniAV-Detect
+# OmniAV-Detect MVAD
 
 ## 项目简介
 
-OmniAV-Detect 面向 audio-video deepfake detection，当前支持把 FakeAVCeleb 和 MAVOS-DD 本地数据转换为 ms-swift / Qwen2.5-Omni SFT JSONL，并通过两条批量评估路径计算 Qwen2.5-Omni 基模或 LoRA binary detector 的 `Real` / `Fake` token logits：并行评估后端和 vLLM 后端。仓库根目录的 `mvad/` 额外提供 MVAD 公开 train 数据的独立预处理和 Qwen2.5-Omni baseline 训练脚本。
+本分支是 MVAD 专用版本，只保留 MVAD 公开 train 数据的预处理、Qwen2.5-Omni / Qwen3-Omni baseline 训练脚本和对应文档。
 
-其中 FakeAVCeleb 当前支持两种数据划分 protocol：
+当前目标：
 
-- 默认 `70% / 30%` 的 `overall_label + modality_type` 分层切分。
-- 参考 MRDF 的 subject-independent `5-fold` 划分，读取 `data_fakeavceleb/train_*.txt` 和 `test_*.txt`。
+- 解压 MVAD `train/**/*.zip`。
+- 扫描 `real_real`、`real_fake`、`fake_real`、`fake_fake` 四类样本。
+- 为每条视频配对显式音频路径。
+- 按 group-aware 规则构建 internal train/val 划分。
+- 生成 Qwen Omni / ms-swift 可用的显式 `audios` JSONL。
+- 提供 Qwen2.5-Omni-7B 和 Qwen3-Omni-30B-A3B-Thinking 的 LoRA 训练脚本。
+
+注意：MVAD 当前公开数据只有 train。本项目生成的是 internal validation baseline，不是官方 test 复现。
 
 ## 项目结构
 
 ```text
-configs/
-  data/                       # 数据准备 YAML 配置
-  eval/                       # 批量评估 YAML 配置
-datasets/                     # 数据集下载辅助脚本
-mvad/                         # MVAD 解压、划分、抽音频和 JSONL 生成脚本
-scripts/                      # 可直接运行的薄入口
-src/omniav_detect/            # 核心 Python 包
-  data/                       # 数据扫描、转换、统计
-  evaluation/                 # 单模型评估和批量评估
-tests/                        # 单元测试
-docs/                         # 命令、架构、记录
+mvad/
+  common.py                         # MVAD 路径、标签、JSONL 公共函数
+  progress.py                       # tqdm 进度条封装
+  unzip_archives.py                 # 7z / zipfile 解压
+  pairing.py                        # 同目录音视频配对与内嵌音轨检测
+  build_index_and_split.py          # 样本索引与 group-aware 划分
+  build_av_jsonl.py                 # 显式 audios JSONL 构建
+  prepare_mvad.py                   # 一体化预处理入口
+  run_prepare_mvad.sh               # 服务器一键预处理命令
+  train_stage1_MVAD.sh              # Qwen2.5-Omni-7B stage1 LoRA
+  train_stage1_MVAD_Qwen3Omni30BThinking.sh
+                                    # Qwen3-Omni-30B-A3B-Thinking stage1 LoRA 尝试脚本
+
+docs/
+  commands.md                       # 常用命令
+  architecture.md                   # MVAD 流程说明
+  notes.md                          # 当前状态摘要
+  logs/2026-05.md                   # 变更记录
+
+tests/
+  test_mvad_prepare.py              # MVAD 预处理单元测试
 ```
 
-## 关键文件说明
+## 数据规则
 
-- `configs/data/swift_av_sft.yaml`：FakeAVCeleb / MAVOS-DD 数据准备路径和默认参数。
-- `configs/eval/qwen_omni_binary_batch_eval.yaml`：并行评估后端的批量评估配置。
-- `configs/eval/qwen_omni_binary_batch_eval_vllm.yaml`：vLLM 后端的批量评估配置。
-- `scripts/prepare_swift_av_sft.py`：统一数据准备入口，通过 `--dataset` 选择一个数据集。
-- `scripts/eval_batch_binary_qwen_omni.py`：并行评估后端的批量评估入口。
-- `scripts/eval_batch_binary_qwen_omni_vllm.py`：vLLM 后端的批量评估入口。
-- `src/omniav_detect/data/common.py`：视频扫描、ms-swift record 构造、统计文件写出。
-- `src/omniav_detect/data/prepare_runner.py`：配置驱动的数据准备调度。
-- `src/omniav_detect/data/fakeavceleb.py`：FakeAVCeleb metadata 合并、默认分层切分、MRDF 5 折切分和输出构建。
-- `src/omniav_detect/data/mavosdd.py`：MAVOS-DD Arrow metadata 读取和 open-set split 解析。
-- `scripts/extract_audio_and_build_av_jsonl.py`：从已有视频 JSONL 批量抽取音频，并生成带 `audios` 字段的新 JSONL。
-- `mvad/prepare_mvad.py`：MVAD 专用一体化预处理入口，生成 internal train/val 显式音频 JSONL。
-- `mvad/train_stage1_MVAD.sh`：MVAD 显式音频 stage1 LoRA baseline 训练脚本。
-- `mvad/train_stage1_MVAD_Qwen3Omni30BThinking.sh`：MVAD 显式音频 Qwen3-Omni-30B-A3B-Thinking stage1 LoRA 尝试训练脚本。
-- `src/omniav_detect/evaluation/batch_runner.py`：按 YAML 调度并行或 vLLM 批量评估。
-- `src/omniav_detect/evaluation/parallel_runner.py`：多 GPU JSONL 分片、worker 调度、预测合并和指标重算。
-- `src/omniav_detect/evaluation/binary_logits_vllm.py`：vLLM 后端单次评估主流程，由批量入口调用。
-- `src/omniav_detect/evaluation/vllm_runtime.py`：vLLM 推理、多模态输入和 logprob 解析。
-- `src/omniav_detect/evaluation/metrics.py`：Accuracy、AUC、AP/mAP、Confusion Matrix 和 recall 指标计算。
-- `src/omniav_detect/evaluation/visualization.py`：评估结果的 CSV / HTML 可视化输出，matplotlib 可用时额外生成 PNG。
+二分类标签：
 
-## 数据说明
+- `real_real` -> `Real`
+- `real_fake` / `fake_real` / `fake_fake` -> `Fake`
 
-数据准备输入为本地视频文件，不复制视频；输出 JSONL 中的 `videos` 保存绝对路径。每条 SFT 记录包含 `messages`、`videos` 和 `meta`，binary SFT 的 assistant 只回答 `Real` 或 `Fake`。
+音频处理：
 
-如果需要显式把音频作为独立输入喂给 Qwen 多模态模型，可在生成视频 JSONL 后，再运行 `scripts/extract_audio_and_build_av_jsonl.py` 额外写出带 `audios` 字段的数据集。
+- 优先使用同目录同 stem 的音频文件，例如 `video_1.mp4` + `video_1.wav` / `video_1.flac`。
+- 如果同目录没有音频，用 `ffprobe` 判断视频是否有内嵌音轨。
+- 有内嵌音轨时抽到视频同目录同名 `.wav`。
+- 同目录音频和内嵌音轨都不存在时，写入 `missing_audio_pairs.jsonl`，不进入训练 JSONL。
 
-注意：
-
-- 旧流程是 `videos` + `use_audio_in_video=True`，由框架从视频里自动抽音频。
-- 新流程是 `videos + audios`，训练时必须关闭 `use_audio_in_video`，否则同一份音频会重复进入模型。
-
-数据准备会同时写出 `dataset_scan_summary.json`、`dataset_stats.json`、`missing_or_invalid_files.csv` 和 `preview_samples.json`。评估会输出 `predictions.jsonl`、`bad_samples.jsonl`、`metrics.json` 和 `visualizations/`，批量评估会额外输出 `batch_eval_summary.json/csv`。
-
-## 运行方式
-
-FakeAVCeleb dry-run：
+## 一键预处理
 
 ```bash
-python scripts/prepare_swift_av_sft.py --dataset fakeavceleb --dry_run --num_preview 5
+SOURCE_ROOT=/data/OneDay/MVAD bash mvad/run_prepare_mvad.sh
 ```
 
-FakeAVCeleb MRDF 5-fold dry-run：
+如果 zip 已经解压，推荐续跑：
 
 ```bash
-python scripts/prepare_swift_av_sft.py --dataset fakeavceleb_mrdf5fold --dry_run --num_preview 5
+SOURCE_ROOT=/data/OneDay/MVAD \
+SKIP_UNZIP=true \
+FFPROBE_WORKERS=16 \
+FFMPEG_WORKERS=8 \
+bash mvad/run_prepare_mvad.sh
 ```
 
-MAVOS-DD dry-run：
+默认输出：
+
+- `/data/OneDay/OmniAV-Detect/data/mvad_unpacked`
+- `/data/OneDay/OmniAV-Detect/data/mvad_processed`
+- `/data/OneDay/OmniAV-Detect/data/swift_sft/mvad/mvad_binary_train_with_audio.jsonl`
+- `/data/OneDay/OmniAV-Detect/data/swift_sft/mvad/mvad_binary_val_with_audio.jsonl`
+
+## 训练
+
+Qwen2.5-Omni-7B：
 
 ```bash
-python scripts/prepare_swift_av_sft.py --dataset mavosdd --dry_run --num_preview 5
+bash mvad/train_stage1_MVAD.sh
 ```
 
-批量评估 dry-run：
+Qwen3-Omni-30B-A3B-Thinking：
 
 ```bash
-python scripts/eval_batch_binary_qwen_omni.py \
-  --config configs/eval/qwen_omni_binary_batch_eval.yaml \
-  --dry_run
+bash mvad/train_stage1_MVAD_Qwen3Omni30BThinking.sh
 ```
 
-vLLM 批量评估 dry-run：
+Qwen3 脚本是尝试启动配置。30B 模型在普通 `swift sft` DDP LoRA 下，2x48GB 仍可能 OOM；如果无法启动，需要改用 Megatron-SWIFT / 张量并行或低比特训练方案。
+
+## 验证
 
 ```bash
-python scripts/eval_batch_binary_qwen_omni_vllm.py \
-  --config configs/eval/qwen_omni_binary_batch_eval_vllm.yaml \
-  --dry_run
+python -B tests/test_mvad_prepare.py -v
+python -B -m py_compile mvad/common.py mvad/progress.py mvad/unzip_archives.py mvad/pairing.py mvad/build_index_and_split.py mvad/build_av_jsonl.py mvad/prepare_mvad.py
 ```
-
-详细命令见 `docs/commands.md`。
-
-## 阅读顺序
-
-1. `configs/data/swift_av_sft.yaml`
-2. `configs/eval/qwen_omni_binary_batch_eval.yaml`
-3. `src/omniav_detect/data/prepare_runner.py`
-4. `src/omniav_detect/data/common.py`
-5. `src/omniav_detect/data/fakeavceleb.py` 和 `src/omniav_detect/data/mavosdd.py`
-6. `src/omniav_detect/evaluation/batch_runner.py`
-7. `src/omniav_detect/evaluation/parallel_runner.py`
-8. `src/omniav_detect/evaluation/binary_logits_vllm.py`、`vllm_runtime.py`、`metrics.py`、`outputs.py`、`visualization.py`

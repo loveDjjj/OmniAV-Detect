@@ -18,7 +18,7 @@ import subprocess
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from mvad.common import abs_path, iter_audio_files, normalized_stem
-from src.omniav_detect.evaluation.progress import create_progress
+from mvad.progress import create_progress
 
 
 def path_key(path: Path) -> str:
